@@ -1036,16 +1036,117 @@ function openHighlightsModal(taskId) {
     currentHighlightsTaskId = taskId;
     const zipSec = document.getElementById('hlZipSection');
     if (zipSec) zipSec.classList.add('hidden');
+    closeHlPreviewPlayer();
+
     const container = document.getElementById('hlClipsContainer');
     if (container) {
         container.innerHTML = `
             <div class="text-center py-10 text-slate-500 text-xs space-y-1">
-                <i class="fa-solid fa-clapperboard text-3xl text-slate-600 mb-2"></i>
-                <p>Bấm nút <b>"Quét & Cắt Highlights"</b> ở trên để AI tự động tìm đoạn hay nhất!</p>
+                <i class="fa-solid fa-spinner fa-spin text-2xl text-cyan-400 mb-2"></i>
+                <p>Đang kiểm tra các clip highlights đã cắt...</p>
             </div>
         `;
     }
     openModal('highlightsModal');
+
+    // Tự động kiểm tra và tải lại các clip đã cắt trước đó để tải về bất kỳ lúc nào
+    fetch(`/api/highlights/${taskId}/info`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.has_clips && data.clips && data.clips.length > 0) {
+                renderHighlightClipsList(data);
+            } else {
+                if (container) {
+                    container.innerHTML = `
+                        <div class="text-center py-10 text-slate-500 text-xs space-y-1">
+                            <i class="fa-solid fa-clapperboard text-3xl text-slate-600 mb-2"></i>
+                            <p>Bấm nút <b>"Quét & Cắt Highlights"</b> ở trên để AI tự động tìm đoạn hay nhất!</p>
+                            <p class="text-slate-600 text-[11px]">Clip sau khi cắt được lưu trữ để bạn có thể xem lại và tải về sau bất cứ lúc nào!</p>
+                        </div>
+                    `;
+                }
+            }
+        })
+        .catch(() => {
+            if (container) {
+                container.innerHTML = `
+                    <div class="text-center py-10 text-slate-500 text-xs space-y-1">
+                        <i class="fa-solid fa-clapperboard text-3xl text-slate-600 mb-2"></i>
+                        <p>Bấm nút <b>"Quét & Cắt Highlights"</b> ở trên để AI tự động tìm đoạn hay nhất!</p>
+                    </div>
+                `;
+            }
+        });
+}
+
+function renderHighlightClipsList(hData) {
+    const container = document.getElementById('hlClipsContainer');
+    const zipSec = document.getElementById('hlZipSection');
+    const zipBtn = document.getElementById('hlZipDownloadBtn');
+    const zipTitle = document.getElementById('hlZipTitle');
+
+    if (zipSec && zipBtn) {
+        zipSec.classList.remove('hidden');
+        zipBtn.href = hData.zip_url || `/api/highlights/${hData.task_id}/zip`;
+        if (zipTitle) zipTitle.textContent = `Đã cắt thành công ${hData.total_clips} clip (${formatBytes(hData.zip_size)})`;
+    }
+
+    if (container) {
+        container.innerHTML = hData.clips.map(clip => `
+            <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-center justify-between gap-3 hover:border-cyan-500/40 transition">
+                <div class="flex items-center space-x-3 min-w-0">
+                    <div class="w-10 h-10 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-sm flex-shrink-0">
+                        #${clip.clip_number}
+                    </div>
+                    <div class="min-w-0">
+                        <div class="text-white font-bold text-xs truncate">Clip Viral #${clip.clip_number} (Dọc 9:16)</div>
+                        <div class="text-slate-400 text-[11px] flex items-center space-x-2 pt-0.5">
+                            <span><i class="fa-regular fa-clock mr-1 text-slate-500"></i>${clip.time_range || clip.duration + 's'}</span>
+                            <span>•</span>
+                            <span>${formatBytes(clip.file_size)}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex items-center space-x-2 flex-shrink-0">
+                    <button onclick="playHighlightClipInline('${clip.download_url}', 'Clip Viral #${clip.clip_number}')" class="py-1.5 px-3 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-xs font-bold transition flex items-center space-x-1.5 border border-cyan-500/30 active:scale-95 shadow-sm" title="Xem trước clip trực tiếp">
+                        <i class="fa-solid fa-play text-cyan-400"></i>
+                        <span>Xem Thử</span>
+                    </button>
+                    <a href="${clip.download_url}" download class="py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-bold transition flex items-center space-x-1 border border-slate-700 active:scale-95" title="Tải clip về máy">
+                        <i class="fa-solid fa-cloud-arrow-down text-emerald-400"></i>
+                        <span>Tải Về</span>
+                    </a>
+                </div>
+            </div>
+        `).join('');
+    }
+}
+
+function playHighlightClipInline(clipUrl, title) {
+    const sec = document.getElementById('hlPlayerSection');
+    const video = document.getElementById('hlVideoElement');
+    const titleEl = document.getElementById('hlPlayerTitle');
+
+    if (titleEl) titleEl.textContent = `Đang xem: ${title}`;
+    if (sec) sec.classList.remove('hidden');
+
+    if (video) {
+        video.src = clipUrl;
+        video.load();
+        video.play().catch(e => console.log('Autoplay:', e));
+    }
+    sec?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function closeHlPreviewPlayer() {
+    const sec = document.getElementById('hlPlayerSection');
+    const video = document.getElementById('hlVideoElement');
+    if (video) {
+        video.pause();
+        video.src = '';
+    }
+    if (sec) sec.classList.add('hidden');
 }
 
 async function generateViralHighlights() {
@@ -1086,47 +1187,11 @@ async function generateViralHighlights() {
         if (res.ok && data.data) {
             const hData = data.data;
             showToast(`🎉 Đã tạo thành công ${hData.total_clips} clip ngắn viral!`, 'success');
+            renderHighlightClipsList(hData);
 
-            // Hiển thị nút tải trọn bộ ZIP
-            const zipSec = document.getElementById('hlZipSection');
-            const zipBtn = document.getElementById('hlZipDownloadBtn');
-            const zipTitle = document.getElementById('hlZipTitle');
-            if (zipSec && zipBtn) {
-                zipSec.classList.remove('hidden');
-                zipBtn.href = hData.zip_url;
-                if (zipTitle) zipTitle.textContent = `Đã cắt thành công ${hData.total_clips} clip (${formatBytes(hData.zip_size)})`;
-            }
-
-            // Render từng clip
-            if (container) {
-                container.innerHTML = hData.clips.map(clip => `
-                    <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-center justify-between gap-3 hover:border-slate-700 transition">
-                        <div class="flex items-center space-x-3 min-w-0">
-                            <div class="w-10 h-10 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-sm flex-shrink-0">
-                                #${clip.clip_number}
-                            </div>
-                            <div class="min-w-0">
-                                <div class="text-white font-bold text-xs truncate">Clip Viral #${clip.clip_number} (Dọc 9:16)</div>
-                                <div class="text-slate-400 text-[11px] flex items-center space-x-2 pt-0.5">
-                                    <span><i class="fa-regular fa-clock mr-1 text-slate-500"></i>${clip.time_range} (${clip.duration}s)</span>
-                                    <span>•</span>
-                                    <span>${formatBytes(clip.file_size)}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="flex items-center space-x-2 flex-shrink-0">
-                            <button onclick="playHighlightClip('${clip.download_url}', 'Clip Viral #${clip.clip_number}')" class="py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition flex items-center space-x-1 border border-slate-700 active:scale-95">
-                                <i class="fa-solid fa-play text-cyan-400"></i>
-                                <span>Xem</span>
-                            </button>
-                            <a href="${clip.download_url}" download class="py-1.5 px-3 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 hover:text-cyan-300 text-xs font-bold transition flex items-center space-x-1 border border-cyan-500/30 active:scale-95">
-                                <i class="fa-solid fa-cloud-arrow-down"></i>
-                                <span>Tải Clip</span>
-                            </a>
-                        </div>
-                    </div>
-                `).join('');
+            // Tự động phát clip đầu tiên để người dùng xem thử ngay lập tức!
+            if (hData.clips && hData.clips.length > 0) {
+                playHighlightClipInline(hData.clips[0].download_url, `Clip Viral #${hData.clips[0].clip_number}`);
             }
         } else {
             showToast(data.detail || 'Không thể tạo clip viral từ video này', 'error');
@@ -1148,14 +1213,6 @@ async function generateViralHighlights() {
 }
 
 function playHighlightClip(clipUrl, title) {
-    const video = document.getElementById('videoElement');
-    const titleEl = document.getElementById('playerTitle');
-    if (titleEl) titleEl.textContent = title;
-    if (video) {
-        video.src = clipUrl;
-        video.load();
-        video.play().catch(e => console.log('Autoplay:', e));
-    }
-    openModal('playerModal');
+    playHighlightClipInline(clipUrl, title);
 }
 

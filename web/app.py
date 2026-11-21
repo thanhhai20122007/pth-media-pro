@@ -38,6 +38,7 @@ from core.ai_engine import (
     detect_existing_subtitles,
     separate_vocal_and_beat,
     apply_anti_copyright_shield,
+    get_video_duration,
 )
 from core.worker import task_worker
 from core.clipboard_watcher import clipboard_watcher
@@ -504,6 +505,54 @@ async def api_download_highlight_zip(task_id: int):
     if not os.path.exists(zip_path):
         raise HTTPException(status_code=404, detail="Gói ZIP không tồn tại hoặc chưa được tạo")
     return FileResponse(path=zip_path, filename=zip_filename, media_type="application/zip")
+
+
+@app.get("/api/highlights/{task_id}/info")
+async def api_get_highlights_info(task_id: int):
+    """
+    Kiểm tra và lấy danh sách các clip highlights đã được cắt trước đó của tác vụ
+    để người dùng có thể xem lại và tải về bất kỳ lúc nào mà không cần cắt lại.
+    """
+    import glob
+    clip_files = glob.glob(os.path.join(PROCESSED_DIR, f"highlight_{task_id}_clip_*.mp4"))
+    if not clip_files:
+        return {"has_clips": False, "clips": []}
+
+    clips = []
+    # Sắp xếp theo thứ tự clip_1, clip_2...
+    def get_clip_num(filepath):
+        m = re.search(r"clip_(\d+)", os.path.basename(filepath))
+        return int(m.group(1)) if m else 0
+
+    for f in sorted(clip_files, key=get_clip_num):
+        basename = os.path.basename(f)
+        clip_num = get_clip_num(f)
+        size = os.path.getsize(f)
+        try:
+            dur = int(get_video_duration(f))
+        except Exception:
+            dur = 45
+        clips.append({
+            "clip_number": clip_num,
+            "filename": basename,
+            "download_url": f"/api/highlights/{task_id}/clip/{clip_num}",
+            "file_size": size,
+            "duration": dur,
+            "time_range": f"Clip #{clip_num} ({dur}s)"
+        })
+
+    zip_filename = f"viral_highlights_{task_id}.zip"
+    zip_path = os.path.join(PROCESSED_DIR, zip_filename)
+    has_zip = os.path.exists(zip_path) and os.path.getsize(zip_path) > 100
+
+    return {
+        "has_clips": True,
+        "task_id": task_id,
+        "total_clips": len(clips),
+        "zip_url": f"/api/highlights/{task_id}/zip" if has_zip else None,
+        "zip_size": os.path.getsize(zip_path) if has_zip else 0,
+        "clips": clips
+    }
 
 
 # ==================== TÍNH NĂNG 3: AI TÁCH BEAT NHẠC & VOCAL ====================
