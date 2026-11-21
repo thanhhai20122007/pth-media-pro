@@ -36,17 +36,48 @@ def sanitize_filename(filename: str, max_length: int = 100) -> str:
 
 
 def resolve_redirect_url(url: str) -> str:
-    """Mở rộng link rút gọn (vt.tiktok.com, fb.watch, threads.com/share, pin.it) về link gốc"""
+    """Mở rộng link rút gọn (vt.tiktok.com, fb.watch, facebook.com/share, threads.com/share, pin.it) về link gốc"""
+    u = url.strip()
+    # Tự động phân giải link Facebook share (/share/r/, /share/v/, /share/p/, fb.watch)
+    if any(k in u for k in ("fb.watch", "facebook.com/share", "fb.com/share")):
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9,vi;q=0.8",
+            }
+            resp = requests.get(u, headers=headers, allow_redirects=True, timeout=8)
+            final_url = resp.url
+            if final_url and "login" not in final_url and any(k in final_url for k in ("reel", "watch", "videos", "posts")):
+                return final_url
+            
+            # Quét tìm canonical hoặc og:url trong HTML
+            html = resp.text
+            canonical = re.findall(r'rel="canonical"\s+href="([^"]+)"', html, re.I)
+            if canonical and "login" not in canonical[0]:
+                return canonical[0]
+            og = re.findall(r'property="og:url"\s+content="([^"]+)"', html, re.I)
+            if og and "login" not in og[0]:
+                return og[0]
+
+            # Quét ID reel/video trong HTML
+            reel_match = re.search(r'facebook\.com/(?:reel|watch/\?v=)(\d+)', html)
+            if reel_match:
+                return f"https://www.facebook.com/reel/{reel_match.group(1)}/"
+        except Exception:
+            pass
+        return u
+
     try:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
         }
-        resp = requests.head(url, headers=headers, allow_redirects=True, timeout=8)
-        if resp.url and resp.url.startswith("http"):
+        resp = requests.head(u, headers=headers, allow_redirects=True, timeout=8)
+        if resp.url and resp.url.startswith("http") and "login" not in resp.url:
             return resp.url
     except Exception:
         pass
-    return url
+    return u
 
 
 def detect_platform(url: str) -> str:
@@ -575,8 +606,8 @@ def download_video_smart(
         err_str = str(ytdl_err)
         print(f"[SmartDownloader] yt-dlp gặp vấn đề: {err_str[:160]}")
 
-        # 3. TẦNG DỰ PHÒNG: Playwright Browser Engine
-        if any(w in err_str.lower() for w in ("429", "login", "redirected", "rate-limit", "generic", "unsupported")):
+        # 3. TẦNG DỰ PHÒNG: Playwright Browser Engine (Đặc trị Facebook Stories, Bài viết riêng tư, Rate-limit)
+        if any(w in err_str.lower() for w in ("429", "login", "redirected", "rate-limit", "generic", "unsupported", "cannot parse", "no video", "extractor", "story", "stories")) or platform == "facebook":
             print("[SmartDownloader] Kích hoạt Playwright Browser Engine để vượt rào cản...")
             try:
                 return extract_with_playwright_browser(

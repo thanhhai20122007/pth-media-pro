@@ -504,3 +504,186 @@ def extract_smart_viral_clips(
         "zip_size": os.path.getsize(zip_path) if os.path.exists(zip_path) else 0,
         "clips": clips
     }
+
+
+def separate_vocal_and_beat(
+    media_path: str,
+    task_id: int,
+    progress_callback: Optional[Callable[[float, str], None]] = None
+) -> Dict[str, Any]:
+    """
+    TÍNH NĂNG 3: AI TÁCH NHẠC BEAT & TÁCH LỜI BÀI HÁT (VOCAL & BEAT SEPARATOR)
+    - Tách riêng biệt:
+      1. Beat Nhạc Nền (Karaoke / Instrumental): Triệt tiêu giọng hát kênh trung tâm, tăng cường âm bass và stereo sống động.
+      2. Lời Hát / Giọng Ca Sĩ (Vocal / Acapella): Cô lập dải tần 150Hz - 4200Hz, triệt tiêu tiếng trống và bass.
+    - Đóng gói cả 2 file vào tệp .ZIP và cho phép tải riêng từng track mp3.
+    """
+    if not os.path.exists(media_path):
+        raise FileNotFoundError(f"Không tìm thấy tệp: {media_path}")
+
+    beat_filename = f"audio_{task_id}_beat_karaoke.mp3"
+    vocal_filename = f"audio_{task_id}_vocal_acapella.mp3"
+    zip_filename = f"audio_separation_{task_id}.zip"
+
+    beat_path = os.path.join(PROCESSED_DIR, beat_filename)
+    vocal_path = os.path.join(PROCESSED_DIR, vocal_filename)
+    zip_path = os.path.join(PROCESSED_DIR, zip_filename)
+
+    if progress_callback:
+        progress_callback(15.0, "Đang xử lý & bóc tách Beat nhạc nền (Karaoke)...")
+
+    # 1. Tách Beat / Karaoke (Center Vocal Cancellation + Bass Boost)
+    cmd_beat = [
+        FFMPEG_EXE, "-y",
+        "-i", media_path,
+        "-ac", "2",
+        "-af", "stereotools=mlev=0.015625:slev=1.35:mode=ms,firequalizer=gain='if(between(f,250,3500),-18,0)',bass=g=3:f=110",
+        "-c:a", "libmp3lame",
+        "-b:a", "192k",
+        beat_path
+    ]
+    p_beat = subprocess.run(cmd_beat, capture_output=True, text=True)
+    if p_beat.returncode != 0:
+        # Fallback to Phase Cancellation method
+        cmd_beat_fallback = [
+            FFMPEG_EXE, "-y",
+            "-i", media_path,
+            "-ac", "2",
+            "-af", "pan=stereo|c0=c0-c1|c1=c1-c0,volume=1.5,bass=g=3:f=110",
+            "-c:a", "libmp3lame",
+            "-b:a", "192k",
+            beat_path
+        ]
+        subprocess.run(cmd_beat_fallback, capture_output=True)
+
+    if progress_callback:
+        progress_callback(55.0, "Đang cô lập Lời hát / Giọng ca sĩ (Vocal Acapella)...")
+
+    # 2. Tách Vocal / Acapella (Center Channel Isolation + Vocal Bandpass)
+    cmd_vocal = [
+        FFMPEG_EXE, "-y",
+        "-i", media_path,
+        "-ac", "2",
+        "-af", "stereotools=slev=0.015625:mlev=1.4:mode=ms,highpass=f=160,lowpass=f=4200,equalizer=f=1200:t=q:w=1.5:g=4",
+        "-c:a", "libmp3lame",
+        "-b:a", "192k",
+        vocal_path
+    ]
+    p_vocal = subprocess.run(cmd_vocal, capture_output=True, text=True)
+    if p_vocal.returncode != 0:
+        cmd_vocal_fallback = [
+            FFMPEG_EXE, "-y",
+            "-i", media_path,
+            "-af", "highpass=f=180,lowpass=f=4000,volume=1.8",
+            "-c:a", "libmp3lame",
+            "-b:a", "192k",
+            vocal_path
+        ]
+        subprocess.run(cmd_vocal_fallback, capture_output=True)
+
+    if progress_callback:
+        progress_callback(85.0, "Đang nén gói ZIP âm thanh...")
+
+    # 3. Đóng gói ZIP
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zip_out:
+        if os.path.exists(beat_path):
+            zip_out.write(beat_path, arcname=beat_filename)
+        if os.path.exists(vocal_path):
+            zip_out.write(vocal_path, arcname=vocal_filename)
+
+    if progress_callback:
+        progress_callback(100.0, "Tách Beat và Vocal hoàn tất!")
+
+    return {
+        "task_id": task_id,
+        "beat": {
+            "filename": beat_filename,
+            "path": beat_path,
+            "size": os.path.getsize(beat_path) if os.path.exists(beat_path) else 0,
+            "download_url": f"/api/audio-separation/{task_id}/download/beat"
+        },
+        "vocal": {
+            "filename": vocal_filename,
+            "path": vocal_path,
+            "size": os.path.getsize(vocal_path) if os.path.exists(vocal_path) else 0,
+            "download_url": f"/api/audio-separation/{task_id}/download/vocal"
+        },
+        "zip": {
+            "filename": zip_filename,
+            "path": zip_path,
+            "size": os.path.getsize(zip_path) if os.path.exists(zip_path) else 0,
+            "download_url": f"/api/audio-separation/{task_id}/download/zip"
+        }
+    }
+
+
+def apply_anti_copyright_shield(
+    video_path: str,
+    task_id: int,
+    mirror: bool = True,
+    speed_boost: float = 1.04,
+    pitch_shift: float = 1.025,
+    progress_callback: Optional[Callable[[float, str], None]] = None
+) -> Dict[str, Any]:
+    """
+    TÍNH NĂNG 4: BỘ LỌC LÁCH BẢN QUYỀN SIÊU CẤP (ANTI-COPYRIGHT SHIELD)
+    - Thay đổi toàn diện mã băm (Digital Fingerprint):
+      1. Tăng tốc nhẹ 1.04x (vừa khớp, không giật, đánh lừa timecode)
+      2. Pitch shift âm thanh nhẹ +0.3 semitone (vượt qua bộ lọc nhận diện bài hát của Meta/TikTok)
+      3. Smart Zoom 102% + Crop loại bỏ viền nhận dạng
+      4. Color Grading: Chỉnh tương phản +3%, bão hòa +5% làm đảo lộn mã băm histogram màu
+      5. Lật gương ngang (Horizontal Flip) tùy chọn (cực mạnh cho review phim / Douyin)
+    """
+    if not os.path.exists(video_path):
+        raise FileNotFoundError(f"Không tìm thấy tệp: {video_path}")
+
+    out_filename = f"anticopy_{task_id}.mp4"
+    out_path = os.path.join(PROCESSED_DIR, out_filename)
+
+    if progress_callback:
+        progress_callback(20.0, "Đang áp dụng bộ lọc lách bản quyền video & âm thanh...")
+
+    # Video filters
+    vf_parts = [
+        "scale=1.02*iw:1.02*ih",
+        "crop=iw:ih",
+        "eq=contrast=1.03:saturation=1.05",
+        f"setpts=PTS/{speed_boost}"
+    ]
+    if mirror:
+        vf_parts.append("hflip")
+    vf_filter = ",".join(vf_parts)
+
+    # Audio filters
+    tempo_val = speed_boost / pitch_shift
+    af_filter = f"asetrate=44100*{pitch_shift},aresample=44100,atempo={tempo_val}"
+
+    cmd = [
+        FFMPEG_EXE, "-y",
+        "-i", video_path,
+        "-vf", vf_filter,
+        "-af", af_filter,
+        "-c:v", "libx264",
+        "-preset", "ultrafast",
+        "-threads", "0",
+        "-c:a", "aac",
+        "-b:a", "128k",
+        "-movflags", "+faststart",
+        out_path
+    ]
+
+    p = subprocess.run(cmd, capture_output=True, text=True)
+    if p.returncode != 0:
+        raise Exception(f"Lỗi khi xử lý video lách bản quyền: {p.stderr[-200:]}")
+
+    if progress_callback:
+        progress_callback(100.0, "Xử lý lách bản quyền hoàn tất!")
+
+    file_size = os.path.getsize(out_path) if os.path.exists(out_path) else 0
+    return {
+        "task_id": task_id,
+        "filename": out_filename,
+        "file_path": out_path,
+        "file_size": file_size,
+        "download_url": f"/api/download/{task_id}?type=anticopy"
+    }

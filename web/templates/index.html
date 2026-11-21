@@ -453,6 +453,16 @@
                         <span>Tải MP3</span>
                     </a>
                 </div>
+                <div class="flex items-center space-x-1.5 pt-1">
+                    <button onclick="if(currentPreviewTaskId) { closePlayerModal(); openAiStudio(currentPreviewTaskId, 'anticopy'); }" class="flex-1 py-1.5 px-2 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-[11px] font-bold border border-rose-500/30 flex items-center justify-center space-x-1" title="Áp dụng bộ lọc lách bản quyền video & âm thanh">
+                        <i class="fa-solid fa-shield-halved"></i>
+                        <span>Lách Bản Quyền Siêu Cấp</span>
+                    </button>
+                    <button onclick="if(currentPreviewTaskId) { closePlayerModal(); openAiStudio(currentPreviewTaskId, 'separation'); }" class="flex-1 py-1.5 px-2 rounded-lg bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 text-[11px] font-bold border border-teal-500/30 flex items-center justify-center space-x-1" title="Tách riêng biệt Beat Karaoke và Lời ca sĩ Vocal">
+                        <i class="fa-solid fa-music"></i>
+                        <span>Tách Beat & Vocal</span>
+                    </button>
+                </div>
                 <div class="flex items-center justify-end space-x-2 pt-1 sm:pt-0">
                     <button onclick="openCurrentVideoFolder()" class="hidden sm:flex text-xs text-slate-300 hover:text-white bg-slate-800 border border-slate-700 px-3 py-2 rounded-lg items-center space-x-1.5" title="Mở thư mục máy tính">
                         <i class="fa-regular fa-folder-open text-amber-400"></i>
@@ -543,14 +553,22 @@
             </div>
 
             <!-- Tab Selection -->
-            <div class="flex items-center space-x-2 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-semibold">
-                <button type="button" id="tabAiCaptionsBtn" onclick="switchAiTab('captions')" class="flex-1 py-2 rounded-lg bg-slate-800 text-yellow-400 shadow transition flex items-center justify-center space-x-1.5">
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[11px] font-semibold">
+                <button type="button" id="tabAiCaptionsBtn" onclick="switchAiTab('captions')" class="py-2 px-1 rounded-lg bg-slate-800 text-yellow-400 shadow transition flex items-center justify-center space-x-1 text-center">
                     <i class="fa-solid fa-closed-captioning"></i>
-                    <span>Phụ Đề Chữ CapCut</span>
+                    <span>Phụ Đề CapCut</span>
                 </button>
-                <button type="button" id="tabAiDubbingBtn" onclick="switchAiTab('dubbing')" class="flex-1 py-2 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center space-x-1.5">
+                <button type="button" id="tabAiDubbingBtn" onclick="switchAiTab('dubbing')" class="py-2 px-1 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center space-x-1 text-center">
                     <i class="fa-solid fa-microphone-lines"></i>
-                    <span>AI Lồng Tiếng Đa Vùng Miền</span>
+                    <span>Lồng Tiếng AI</span>
+                </button>
+                <button type="button" id="tabAiSeparationBtn" onclick="switchAiTab('separation')" class="py-2 px-1 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center space-x-1 text-center">
+                    <i class="fa-solid fa-music"></i>
+                    <span>Tách Beat/Vocal</span>
+                </button>
+                <button type="button" id="tabAiAntiCopyBtn" onclick="switchAiTab('anticopy')" class="py-2 px-1 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center space-x-1 text-center">
+                    <i class="fa-solid fa-shield-halved"></i>
+                    <span>Lách Bản Quyền</span>
                 </button>
             </div>
 
@@ -623,6 +641,107 @@
                     <button id="btnRunDubbing" onclick="triggerAiDubbing()" class="px-5 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white text-xs font-bold shadow-md shadow-purple-500/20 flex items-center space-x-1.5">
                         <i class="fa-solid fa-microphone-lines"></i>
                         <span>Bắt Đầu Lồng Tiếng</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tab 3: Tách Beat & Vocal -->
+            <div id="aiTabSeparation" class="space-y-3.5 text-xs hidden">
+                <div class="p-3 rounded-xl bg-teal-500/10 border border-teal-500/20 text-teal-300 text-[11px] leading-relaxed">
+                    🎵 <b>Công nghệ AI Âm Thanh:</b> Tự động tách riêng biệt <b>Beat Nhạc Nền (Karaoke / Instrumental)</b> và <b>Lời Hát / Giọng Nói (Vocal Acapella)</b> chỉ trong 1-2 giây!
+                </div>
+
+                <div id="separationResultContainer" class="hidden space-y-2">
+                    <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                        <div class="flex items-center space-x-2.5">
+                            <i class="fa-solid fa-headphones text-teal-400 text-base"></i>
+                            <div>
+                                <div class="font-bold text-white">Beat Nhạc Nền (Karaoke)</div>
+                                <div class="text-[10px] text-slate-400">Đã lọc sạch giọng hát, tăng cường bass & stereo</div>
+                            </div>
+                        </div>
+                        <a id="btnDlBeat" href="#" download class="px-3 py-1.5 rounded-lg bg-teal-500 hover:bg-teal-600 text-white font-bold text-xs transition flex items-center space-x-1">
+                            <i class="fa-solid fa-download"></i>
+                            <span>Tải Beat MP3</span>
+                        </a>
+                    </div>
+
+                    <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                        <div class="flex items-center space-x-2.5">
+                            <i class="fa-solid fa-microphone text-pink-400 text-base"></i>
+                            <div>
+                                <div class="font-bold text-white">Lời Hát Ca Sĩ (Vocal Acapella)</div>
+                                <div class="text-[10px] text-slate-400">Đã lọc sạch nhạc nền và tiếng trống bass</div>
+                            </div>
+                        </div>
+                        <a id="btnDlVocal" href="#" download class="px-3 py-1.5 rounded-lg bg-pink-500 hover:bg-pink-600 text-white font-bold text-xs transition flex items-center space-x-1">
+                            <i class="fa-solid fa-download"></i>
+                            <span>Tải Vocal MP3</span>
+                        </a>
+                    </div>
+
+                    <div class="pt-1">
+                        <a id="btnDlAudioZip" href="#" download class="w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition flex items-center justify-center space-x-1.5 shadow-md">
+                            <i class="fa-solid fa-file-zipper"></i>
+                            <span>TẢI TRỌN BỘ CẢ 2 TRACK (.ZIP)</span>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="flex justify-end space-x-2 pt-2 border-t border-slate-800">
+                    <button onclick="closeModal('aiStudioModal')" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-semibold">Đóng</button>
+                    <button id="btnRunSeparation" onclick="triggerAiAudioSeparation()" class="px-5 py-2 rounded-lg bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white text-xs font-bold shadow-md shadow-teal-500/20 flex items-center space-x-1.5">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                        <span>Bắt Đầu Tách Beat & Vocal</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tab 4: Lách Bản Quyền Siêu Cấp -->
+            <div id="aiTabAntiCopy" class="space-y-3.5 text-xs hidden">
+                <div class="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-[11px] leading-relaxed">
+                    🛡️ <b>Anti-Copyright Shield:</b> Đảo lộn hoàn toàn mã băm âm thanh và hình ảnh (Pitch shift +0.3 semitone, speed 1.04x, zoom 102%, dither màu, lật gương) giúp video <b>reup an toàn 100% không dính bản quyền</b>!
+                </div>
+
+                <div class="space-y-2.5">
+                    <div class="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
+                        <div>
+                            <div class="font-semibold text-white">Lật Gương Khung Hình (Mirror Flip)</div>
+                            <div class="text-[11px] text-slate-400">Đảo chiều trái/phải (Khuyên dùng cho review phim, Douyin)</div>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="antiCopyMirrorToggle" class="sr-only peer" checked>
+                            <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-rose-500"></div>
+                        </label>
+                    </div>
+
+                    <div>
+                        <label class="font-semibold text-white block mb-1">Tốc Độ Tăng Trưởng (Speed Boost):</label>
+                        <select id="antiCopySpeedBoost" class="w-full bg-slate-950 border border-slate-700 text-white rounded-xl p-2.5 font-medium">
+                            <option value="1.04" selected>1.04x (Lý tưởng nhất - Thay đổi timecode mà giọng tự nhiên)</option>
+                            <option value="1.06">1.06x (Nhanh vừa - Thích hợp clip tin tức, kịch tính)</option>
+                            <option value="1.08">1.08x (Siêu nhanh - Vượt qua quét gắt gao nhất)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="antiCopyResultContainer" class="hidden p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-center space-y-2">
+                    <div class="text-emerald-400 font-bold">🎉 Đã tạo thành công video lách bản quyền!</div>
+                    <div class="flex items-center justify-center space-x-2">
+                        <button id="btnPreviewAntiCopy" onclick="previewAntiCopyVideo()" class="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs">
+                            <i class="fa-solid fa-play text-rose-400 mr-1"></i>Xem Thử
+                        </button>
+                        <a id="btnDlAntiCopy" href="#" download class="px-4 py-1.5 rounded-lg bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs">
+                            <i class="fa-solid fa-cloud-arrow-down mr-1"></i>Tải Video Lách
+                        </a>
+                    </div>
+                </div>
+
+                <div class="flex justify-end space-x-2 pt-2 border-t border-slate-800">
+                    <button onclick="closeModal('aiStudioModal')" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-semibold">Đóng</button>
+                    <button id="btnRunAntiCopy" onclick="triggerAiAntiCopyright()" class="px-5 py-2 rounded-lg bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white text-xs font-bold shadow-md shadow-rose-500/20 flex items-center space-x-1.5">
+                        <i class="fa-solid fa-shield-halved"></i>
+                        <span>Áp Dụng Lách Bản Quyền</span>
                     </button>
                 </div>
             </div>

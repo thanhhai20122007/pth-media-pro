@@ -814,29 +814,39 @@ function copyMobileUrl() {
 // ==================== PTH AI STUDIO PRO ====================
 let currentAiTaskId = null;
 let currentHighlightsTaskId = null;
+let currentAntiCopyDownloadUrl = '';
 
-function openAiStudio(taskId) {
+function openAiStudio(taskId, defaultTab = 'captions') {
     currentAiTaskId = taskId;
+    // Ẩn kết quả cũ khi mở modal
+    const sepRes = document.getElementById('separationResultContainer');
+    if (sepRes) sepRes.classList.add('hidden');
+    const acRes = document.getElementById('antiCopyResultContainer');
+    if (acRes) acRes.classList.add('hidden');
+
+    switchAiTab(defaultTab);
     openModal('aiStudioModal');
 }
 
 function switchAiTab(tab) {
-    const capDiv = document.getElementById('aiTabCaptions');
-    const dubDiv = document.getElementById('aiTabDubbing');
-    const capBtn = document.getElementById('tabAiCaptionsBtn');
-    const dubBtn = document.getElementById('tabAiDubbingBtn');
-
-    if (tab === 'dubbing') {
-        if (capDiv) capDiv.classList.add('hidden');
-        if (dubDiv) dubDiv.classList.remove('hidden');
-        if (capBtn) capBtn.className = 'flex-1 py-2 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center space-x-1.5';
-        if (dubBtn) dubBtn.className = 'flex-1 py-2 rounded-lg bg-slate-800 text-purple-400 shadow transition flex items-center justify-center space-x-1.5';
-    } else {
-        if (dubDiv) dubDiv.classList.add('hidden');
-        if (capDiv) capDiv.classList.remove('hidden');
-        if (dubBtn) dubBtn.className = 'flex-1 py-2 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center space-x-1.5';
-        if (capBtn) capBtn.className = 'flex-1 py-2 rounded-lg bg-slate-800 text-yellow-400 shadow transition flex items-center justify-center space-x-1.5';
-    }
+    const tabs = ['Captions', 'Dubbing', 'Separation', 'AntiCopy'];
+    tabs.forEach(t => {
+        const div = document.getElementById(`aiTab${t}`);
+        const btn = document.getElementById(`tabAi${t}Btn`);
+        if (t.toLowerCase() === tab.toLowerCase()) {
+            if (div) div.classList.remove('hidden');
+            if (btn) {
+                let colorClass = 'text-yellow-400';
+                if (tab === 'dubbing') colorClass = 'text-purple-400';
+                else if (tab === 'separation') colorClass = 'text-teal-400';
+                else if (tab === 'anticopy') colorClass = 'text-rose-400';
+                btn.className = `py-2 px-1 rounded-lg bg-slate-800 ${colorClass} shadow transition flex items-center justify-center space-x-1 text-center`;
+            }
+        } else {
+            if (div) div.classList.add('hidden');
+            if (btn) btn.className = 'py-2 px-1 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center space-x-1 text-center';
+        }
+    });
 }
 
 async function triggerAiCaptions() {
@@ -921,6 +931,105 @@ async function triggerAiDubbing() {
             btn.innerHTML = `<i class="fa-solid fa-microphone-lines mr-1"></i> Bắt Đầu Lồng Tiếng`;
         }
     }
+}
+
+async function triggerAiAudioSeparation() {
+    if (!currentAiTaskId) return;
+    const btn = document.getElementById('btnRunSeparation');
+    const resContainer = document.getElementById('separationResultContainer');
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i> Đang tách Beat & Vocal...`;
+    }
+
+    try {
+        const res = await fetch('/api/ai/audio-separation', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ task_id: currentAiTaskId })
+        });
+        const data = await res.json();
+        if (res.ok && data.data) {
+            showToast('🎵 Đã tách thành công Beat Karaoke & Vocal Acapella!', 'success');
+            const d = data.data;
+            const btnBeat = document.getElementById('btnDlBeat');
+            const btnVocal = document.getElementById('btnDlVocal');
+            const btnZip = document.getElementById('btnDlAudioZip');
+
+            if (btnBeat) btnBeat.href = d.beat.download_url;
+            if (btnVocal) btnVocal.href = d.vocal.download_url;
+            if (btnZip) btnZip.href = d.zip.download_url;
+
+            if (resContainer) resContainer.classList.remove('hidden');
+        } else {
+            showToast(data.detail || 'Không thể tách âm thanh', 'error');
+        }
+    } catch (e) {
+        showToast('Lỗi kết nối máy chủ', 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Bắt Đầu Tách Beat & Vocal`;
+        }
+    }
+}
+
+async function triggerAiAntiCopyright() {
+    if (!currentAiTaskId) return;
+    const mirror = document.getElementById('antiCopyMirrorToggle')?.checked ?? true;
+    const speedBoost = parseFloat(document.getElementById('antiCopySpeedBoost')?.value || '1.04');
+    const btn = document.getElementById('btnRunAntiCopy');
+    const resContainer = document.getElementById('antiCopyResultContainer');
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i> Đang xử lý lách bản quyền...`;
+    }
+
+    try {
+        const res = await fetch('/api/ai/anti-copyright', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                task_id: currentAiTaskId,
+                mirror: mirror,
+                speed_boost: speedBoost
+            })
+        });
+        const data = await res.json();
+        if (res.ok && data.data) {
+            showToast('🛡️ Đã tạo video lách bản quyền thành công!', 'success');
+            const d = data.data;
+            currentAntiCopyDownloadUrl = d.download_url;
+            const btnDl = document.getElementById('btnDlAntiCopy');
+            if (btnDl) btnDl.href = d.download_url;
+            if (resContainer) resContainer.classList.remove('hidden');
+            loadTasks();
+        } else {
+            showToast(data.detail || 'Lỗi khi xử lý video', 'error');
+        }
+    } catch (e) {
+        showToast('Lỗi kết nối máy chủ', 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fa-solid fa-shield-halved mr-1"></i> Áp Dụng Lách Bản Quyền`;
+        }
+    }
+}
+
+function previewAntiCopyVideo() {
+    if (!currentAntiCopyDownloadUrl) return;
+    const video = document.getElementById('videoElement');
+    const titleEl = document.getElementById('playerTitle');
+    if (titleEl) titleEl.textContent = 'Video Đã Lách Bản Quyền';
+    if (video) {
+        video.src = currentAntiCopyDownloadUrl;
+        video.load();
+        video.play().catch(e => console.log(e));
+    }
+    openModal('playerModal');
 }
 
 function openHighlightsModal(taskId) {

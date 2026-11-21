@@ -36,6 +36,8 @@ from core.ai_engine import (
     apply_ai_voiceover_dubbing,
     extract_smart_viral_clips,
     detect_existing_subtitles,
+    separate_vocal_and_beat,
+    apply_anti_copyright_shield,
 )
 from core.worker import task_worker
 from core.clipboard_watcher import clipboard_watcher
@@ -155,6 +157,16 @@ class HighlightsRequest(BaseModel):
     num_clips: Optional[int] = 3
     clip_duration: Optional[int] = 45
     crop_mode: Optional[str] = "blur"
+
+
+class AudioSeparationRequest(BaseModel):
+    task_id: int
+
+
+class AntiCopyrightRequest(BaseModel):
+    task_id: int
+    mirror: Optional[bool] = True
+    speed_boost: Optional[float] = 1.04
 
 
 class SettingsRequest(BaseModel):
@@ -494,6 +506,65 @@ async def api_download_highlight_zip(task_id: int):
     return FileResponse(path=zip_path, filename=zip_filename, media_type="application/zip")
 
 
+# ==================== TÍNH NĂNG 3: AI TÁCH BEAT NHẠC & VOCAL ====================
+@app.post("/api/ai/audio-separation")
+async def api_audio_separation(req: AudioSeparationRequest):
+    task = get_task(req.task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tác vụ")
+    src_path = task.get("raw_path") or task.get("final_path")
+    if not src_path or not os.path.exists(src_path):
+        raise HTTPException(status_code=400, detail="Không tìm thấy tệp để tách âm thanh")
+
+    try:
+        data = separate_vocal_and_beat(src_path, task_id=req.task_id)
+        return {"status": "success", "data": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi tách Beat & Vocal: {str(e)[:200]}")
+
+
+@app.get("/api/audio-separation/{task_id}/download/{track_type}")
+async def api_download_audio_track(task_id: int, track_type: str):
+    if track_type == "beat":
+        filename = f"audio_{task_id}_beat_karaoke.mp3"
+        media_type = "audio/mpeg"
+    elif track_type == "vocal":
+        filename = f"audio_{task_id}_vocal_acapella.mp3"
+        media_type = "audio/mpeg"
+    elif track_type == "zip":
+        filename = f"audio_separation_{task_id}.zip"
+        media_type = "application/zip"
+    else:
+        raise HTTPException(status_code=400, detail="Loại track không hợp lệ")
+
+    path = os.path.join(PROCESSED_DIR, filename)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Tệp âm thanh chưa được tạo hoặc đã bị xóa")
+    return FileResponse(path=path, filename=filename, media_type=media_type)
+
+
+# ==================== TÍNH NĂNG 4: BỘ LỌC LÁCH BẢN QUYỀN SIÊU CẤP ====================
+@app.post("/api/ai/anti-copyright")
+async def api_anti_copyright(req: AntiCopyrightRequest):
+    task = get_task(req.task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tác vụ")
+    src_path = task.get("raw_path") or task.get("final_path")
+    if not src_path or not os.path.exists(src_path):
+        raise HTTPException(status_code=400, detail="Không tìm thấy tệp video để xử lý lách bản quyền")
+
+    try:
+        data = apply_anti_copyright_shield(
+            video_path=src_path,
+            task_id=req.task_id,
+            mirror=req.mirror if req.mirror is not None else True,
+            speed_boost=req.speed_boost or 1.04
+        )
+        return {"status": "success", "data": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi xử lý lách bản quyền: {str(e)[:200]}")
+
+
 
 
 @app.get("/api/download/{task_id}")
@@ -603,6 +674,21 @@ async def api_download_file(task_id: int, type: Optional[str] = None):
                     raise HTTPException(status_code=500, detail=f"Lỗi lồng tiếng: {str(e)[:150]}")
             else:
                 raise HTTPException(status_code=404, detail="Không tìm thấy file nguồn để lồng tiếng")
+
+    elif type == "anticopy":
+        anticopy_path = os.path.join(PROCESSED_DIR, f"anticopy_{task_id}.mp4")
+        if os.path.exists(anticopy_path):
+            target_path = anticopy_path
+        else:
+            src_path = task.get("raw_path") or task.get("final_path")
+            if src_path and os.path.exists(src_path):
+                try:
+                    data = apply_anti_copyright_shield(src_path, task_id=task_id)
+                    target_path = data["file_path"]
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=f"Lỗi lách bản quyền: {str(e)[:150]}")
+            else:
+                raise HTTPException(status_code=404, detail="Không tìm thấy file nguồn")
 
     elif type in ("clean", "raw"):
         # Video sạch gốc không logo
