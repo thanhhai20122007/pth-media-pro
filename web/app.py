@@ -154,6 +154,7 @@ class HighlightsRequest(BaseModel):
     task_id: int
     num_clips: Optional[int] = 3
     clip_duration: Optional[int] = 45
+    crop_mode: Optional[str] = "blur"
 
 
 class SettingsRequest(BaseModel):
@@ -467,7 +468,8 @@ async def api_highlights(req: HighlightsRequest):
             video_path=src_path,
             task_id=req.task_id,
             num_clips=req.num_clips or 3,
-            clip_duration=req.clip_duration or 45
+            clip_duration=req.clip_duration or 45,
+            crop_mode=req.crop_mode or "blur"
         )
         return {"status": "success", "data": data}
     except Exception as e:

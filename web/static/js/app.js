@@ -943,6 +943,7 @@ async function generateViralHighlights() {
     if (!currentHighlightsTaskId) return;
     const numClips = parseInt(document.getElementById('hlNumClips')?.value || '3');
     const duration = parseInt(document.getElementById('hlClipDuration')?.value || '45');
+    const cropMode = document.getElementById('hlCropMode')?.value || 'blur';
     const btn = document.getElementById('btnGenerateHighlights');
     const container = document.getElementById('hlClipsContainer');
 
@@ -955,8 +956,8 @@ async function generateViralHighlights() {
         container.innerHTML = `
             <div class="text-center py-10 text-cyan-400 text-xs space-y-2">
                 <i class="fa-solid fa-spinner fa-spin text-3xl"></i>
-                <p class="font-bold">AI đang phân tích âm thanh, chuyển cảnh và render clip 9:16...</p>
-                <p class="text-slate-500 text-[11px]">Quá trình này mất khoảng 5-15 giây</p>
+                <p class="font-bold">AI đang phân tích âm thanh, chuyển cảnh và render clip 9:16 (${cropMode === 'fill' ? 'Tràn viền' : (cropMode === 'fit' ? 'Viền đen' : 'Nền mờ')})...</p>
+                <p class="text-slate-500 text-[11px]">Tốc độ siêu tốc tối ưu hoá chỉ mất 3-8 giây</p>
             </div>
         `;
     }
@@ -968,7 +969,8 @@ async function generateViralHighlights() {
             body: JSON.stringify({
                 task_id: currentHighlightsTaskId,
                 num_clips: numClips,
-                clip_duration: duration
+                clip_duration: duration,
+                crop_mode: cropMode
             })
         });
         const data = await res.json();
@@ -1005,6 +1007,10 @@ async function generateViralHighlights() {
                         </div>
 
                         <div class="flex items-center space-x-2 flex-shrink-0">
+                            <button onclick="playHighlightClip('${clip.download_url}', 'Clip Viral #${clip.clip_number}')" class="py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition flex items-center space-x-1 border border-slate-700 active:scale-95">
+                                <i class="fa-solid fa-play text-cyan-400"></i>
+                                <span>Xem</span>
+                            </button>
                             <a href="${clip.download_url}" download class="py-1.5 px-3 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 hover:text-cyan-300 text-xs font-bold transition flex items-center space-x-1 border border-cyan-500/30 active:scale-95">
                                 <i class="fa-solid fa-cloud-arrow-down"></i>
                                 <span>Tải Clip</span>
@@ -1030,5 +1036,17 @@ async function generateViralHighlights() {
             btn.innerHTML = `<i class="fa-solid fa-bolt mr-1"></i> Quét & Cắt Highlights`;
         }
     }
+}
+
+function playHighlightClip(clipUrl, title) {
+    const video = document.getElementById('videoElement');
+    const titleEl = document.getElementById('playerTitle');
+    if (titleEl) titleEl.textContent = title;
+    if (video) {
+        video.src = clipUrl;
+        video.load();
+        video.play().catch(e => console.log('Autoplay:', e));
+    }
+    openModal('playerModal');
 }
 

@@ -647,7 +647,7 @@
 
             <!-- Generator Controls -->
             <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between gap-3 flex-shrink-0 text-xs">
-                <div class="flex items-center space-x-3">
+                <div class="flex items-center flex-wrap gap-3">
                     <div>
                         <label class="text-slate-400 block mb-1">Số clip muốn cắt:</label>
                         <select id="hlNumClips" class="bg-slate-800 border border-slate-700 text-white rounded-lg px-2.5 py-1.5 font-bold">
@@ -662,6 +662,14 @@
                             <option value="30">30 Giây (Chuẩn TikTok)</option>
                             <option value="45" selected>45 Giây (Lý tưởng Shorts)</option>
                             <option value="60">60 Giây (Tối đa Reels)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-slate-400 block mb-1">Kiểu cắt đứng 9:16:</label>
+                        <select id="hlCropMode" class="bg-slate-800 border border-slate-700 text-cyan-300 rounded-lg px-2.5 py-1.5 font-bold">
+                            <option value="blur" selected>✨ Nền Mờ Nghệ Thuật (Giữ 100% hình)</option>
+                            <option value="fill">📱 Cắt Tràn Viền 9:16 (Vừa khít màn hình)</option>
+                            <option value="fit">🎬 Viền Đen Cân Đối (Chuẩn Cinema)</option>
                         </select>
                     </div>
                 </div>

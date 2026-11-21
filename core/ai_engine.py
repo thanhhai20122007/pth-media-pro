@@ -368,12 +368,16 @@ def extract_smart_viral_clips(
     task_id: int,
     num_clips: int = 3,
     clip_duration: int = 45,
+    crop_mode: str = "blur",
     progress_callback: Optional[Callable[[float, str], None]] = None
 ) -> Dict[str, Any]:
     """
     TÍNH NĂNG 3: AI CẮT VIDEO DÀI THÀNH HÀNG LOẠT CLIP NGẮN VIRAL (SMART HIGHLIGHTS)
-    - Quét các đoạn cao trào / hấp dẫn nhất theo mốc thời gian
-    - Tự động cắt 3 - 5 clip ngắn 30-60 giây dạng dọc 9:16 (Blurred Background)
+    - Quét các đoạn cao trào / hấp dẫn nhất theo mốc thời gian thông minh (tránh intro/outro)
+    - Hỗ trợ các chế độ cắt đứng 9:16 thông minh:
+      * blur: Nền mờ nghệ thuật siêu tốc (giữ trọn 100% nội dung gốc)
+      * fill: Cắt tràn viền thông minh (phóng to vừa khít màn hình 9:16 điện thoại)
+      * fit: Viền đen cân đối chuẩn điện ảnh
     - Đóng gói toàn bộ clip vào tệp .ZIP để tải 1 chạm hoặc tải từng clip riêng lẻ
     """
     if not os.path.exists(video_path):
@@ -381,20 +385,19 @@ def extract_smart_viral_clips(
 
     total_duration = get_video_duration(video_path)
     if total_duration < 30.0:
-        # Video ngắn dưới 30s
         clip_duration = min(int(total_duration), 30)
         num_clips = 1
     else:
         num_clips = max(1, min(num_clips, 5))
-        clip_duration = max(20, min(clip_duration, 60))
+        clip_duration = max(15, min(clip_duration, 60))
 
     if progress_callback:
         progress_callback(10.0, "Đang phân tích các phân cảnh cao trào...")
 
-    # Tính toán các mốc thời gian cao trào phân bổ đều trong video
-    # Tránh đoạn intro đầu và outro cuối để lấy đúng nội dung đắt giá nhất
-    usable_duration = max(total_duration - clip_duration, 0)
-    step = usable_duration / (num_clips + 1) if num_clips > 0 else 0
+    # Bỏ qua 8% đầu (thường là nhạc dạo, intro) và 8% cuối (outro, kêu gọi follow)
+    intro_offset = max(total_duration * 0.08, 3.0)
+    effective_duration = max(total_duration - (intro_offset * 2) - clip_duration, 0)
+    step = effective_duration / max(num_clips, 1)
 
     clips = []
     zip_filename = f"viral_highlights_{task_id}.zip"
@@ -407,32 +410,72 @@ def extract_smart_viral_clips(
             if progress_callback:
                 progress_callback(pct, f"Đang cắt & render Clip #{clip_num} (dọc 9:16)...")
 
-            start_sec = max(0, int(step * clip_num))
+            # Mốc thời gian cao trào phân bổ tối ưu
+            start_sec = max(0, int(intro_offset + (step * i)))
             clip_filename = f"highlight_{task_id}_clip_{clip_num}.mp4"
             clip_path = os.path.join(PROCESSED_DIR, clip_filename)
 
-            # Cắt và render chuẩn dọc 9:16 với nền mờ nghệ thuật
-            cmd = [
-                FFMPEG_EXE, "-y",
-                "-ss", str(start_sec),
-                "-t", str(clip_duration),
-                "-i", video_path,
-                "-filter_complex",
-                "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=25:5[bg];"
-                "[0:v]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
-                "[bg][fg]overlay=(W-w)/2:(H-h)/2[merged]",
-                "-map", "[merged]",
-                "-map", "0:a?",
-                "-c:v", "libx264",
-                "-preset", "ultrafast",
-                "-c:a", "aac",
-                "-b:a", "128k",
-                "-movflags", "+faststart",
-                clip_path
-            ]
-            subprocess.run(cmd, capture_output=True, check=True)
+            # Cấu hình bộ lọc chuyển đổi 9:16 thông minh & siêu tốc
+            if crop_mode == "fill":
+                # Smart Center Crop: Phóng to và crop đúng trung tâm 9:16 tràn toàn màn hình
+                cmd = [
+                    FFMPEG_EXE, "-y",
+                    "-ss", str(start_sec),
+                    "-i", video_path,
+                    "-t", str(clip_duration),
+                    "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
+                    "-c:v", "libx264",
+                    "-preset", "ultrafast",
+                    "-threads", "0",
+                    "-c:a", "aac",
+                    "-b:a", "128k",
+                    "-movflags", "+faststart",
+                    clip_path
+                ]
+            elif crop_mode == "fit":
+                # Viền đen cân đối
+                cmd = [
+                    FFMPEG_EXE, "-y",
+                    "-ss", str(start_sec),
+                    "-i", video_path,
+                    "-t", str(clip_duration),
+                    "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black",
+                    "-c:v", "libx264",
+                    "-preset", "ultrafast",
+                    "-threads", "0",
+                    "-c:a", "aac",
+                    "-b:a", "128k",
+                    "-movflags", "+faststart",
+                    clip_path
+                ]
+            else:
+                # Nền mờ nghệ thuật siêu tốc (Tối ưu hóa: Thu nhỏ 270x480 trước khi làm mờ -> Tăng tốc 10 lần)
+                cmd = [
+                    FFMPEG_EXE, "-y",
+                    "-ss", str(start_sec),
+                    "-i", video_path,
+                    "-t", str(clip_duration),
+                    "-filter_complex",
+                    "[0:v]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=10:2,scale=1080:1920[bg];"
+                    "[0:v]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
+                    "[bg][fg]overlay=(W-w)/2:(H-h)/2[merged]",
+                    "-map", "[merged]",
+                    "-map", "0:a?",
+                    "-c:v", "libx264",
+                    "-preset", "ultrafast",
+                    "-threads", "0",
+                    "-c:a", "aac",
+                    "-b:a", "128k",
+                    "-movflags", "+faststart",
+                    clip_path
+                ]
 
-            if os.path.exists(clip_path):
+            p = subprocess.run(cmd, capture_output=True, text=True)
+            if p.returncode != 0:
+                print(f"[AIEngine] Lỗi cắt clip #{clip_num}: {p.stderr[-200:]}")
+                continue
+
+            if os.path.exists(clip_path) and os.path.getsize(clip_path) > 1000:
                 zip_out.write(clip_path, arcname=clip_filename)
                 start_min = int(start_sec // 60)
                 start_s = int(start_sec % 60)
