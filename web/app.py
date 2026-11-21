@@ -31,6 +31,12 @@ from core.database import (
 )
 from core.processor import apply_anti_duplicate_filter, extract_audio_mp3, compress_video
 from core.downloader import sanitize_filename, extract_playlist_or_channel
+from core.ai_engine import (
+    apply_ai_autocaptions,
+    apply_ai_voiceover_dubbing,
+    extract_smart_viral_clips,
+    detect_existing_subtitles,
+)
 from core.worker import task_worker
 from core.clipboard_watcher import clipboard_watcher
 
@@ -130,6 +136,24 @@ class PlaylistExtractRequest(BaseModel):
     format_type: Optional[str] = "video"
     quality: Optional[str] = "1080p"
     session_id: Optional[str] = "default"
+
+
+class AutoCaptionRequest(BaseModel):
+    task_id: int
+    style_preset: Optional[str] = "capcut_yellow"
+    position: Optional[str] = "bottom"
+    skip_if_exists: Optional[bool] = True
+
+
+class VoiceoverDubbingRequest(BaseModel):
+    task_id: int
+    voice_type: Optional[str] = "male_north"
+
+
+class HighlightsRequest(BaseModel):
+    task_id: int
+    num_clips: Optional[int] = 3
+    clip_duration: Optional[int] = 45
 
 
 class SettingsRequest(BaseModel):
@@ -367,6 +391,108 @@ async def api_compress_task(task_id: int, bg_tasks: BackgroundTasks):
     return {"status": "compressing_started"}
 
 
+@app.post("/api/ai/autocaptions")
+async def api_autocaptions(req: AutoCaptionRequest, bg_tasks: BackgroundTasks):
+    task = get_task(req.task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tác vụ")
+    src_path = task.get("raw_path") or task.get("final_path")
+    if not src_path or not os.path.exists(src_path):
+        raise HTTPException(status_code=400, detail="Không tìm thấy tệp video để tạo phụ đề")
+    sid = task.get("session_id", "default")
+
+    def run_captions():
+        try:
+            update_task(req.task_id, speed="AI Phụ Đề", progress=30.0)
+            broadcast_sync({"event": "task_progress", "session_id": sid, "data": {"id": req.task_id, "session_id": sid, "progress": 30.0, "speed": "AI Phụ Đề"}})
+            out_cap = os.path.join(PROCESSED_DIR, f"captioned_{req.task_id}.mp4")
+            apply_ai_autocaptions(
+                video_path=src_path,
+                output_path=out_cap,
+                style_preset=req.style_preset or "capcut_yellow",
+                position=req.position or "bottom",
+                skip_if_exists=bool(req.skip_if_exists)
+            )
+            update_task(req.task_id, final_path=out_cap, speed="Đã tạo phụ đề", progress=100.0, status="READY")
+            broadcast_sync({"event": "task_done", "session_id": sid, "data": {"id": req.task_id, "session_id": sid, "status": "READY", "final_path": out_cap}})
+        except Exception as e:
+            update_task(req.task_id, error_log=f"Lỗi tạo phụ đề: {str(e)[:150]}")
+            broadcast_sync({"event": "task_error", "session_id": sid, "data": {"id": req.task_id, "session_id": sid, "error": str(e)[:150]}})
+
+    bg_tasks.add_task(run_captions)
+    return {"status": "autocaptions_started"}
+
+
+@app.post("/api/ai/dubbing")
+async def api_dubbing(req: VoiceoverDubbingRequest, bg_tasks: BackgroundTasks):
+    task = get_task(req.task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tác vụ")
+    src_path = task.get("raw_path") or task.get("final_path")
+    if not src_path or not os.path.exists(src_path):
+        raise HTTPException(status_code=400, detail="Không tìm thấy tệp video để lồng tiếng")
+    sid = task.get("session_id", "default")
+
+    def run_dub():
+        try:
+            update_task(req.task_id, speed="AI Lồng Tiếng", progress=30.0)
+            broadcast_sync({"event": "task_progress", "session_id": sid, "data": {"id": req.task_id, "session_id": sid, "progress": 30.0, "speed": "AI Lồng Tiếng"}})
+            out_dub = os.path.join(PROCESSED_DIR, f"dubbed_{req.task_id}.mp4")
+            apply_ai_voiceover_dubbing(
+                video_path=src_path,
+                output_path=out_dub,
+                voice_type=req.voice_type or "male_north"
+            )
+            update_task(req.task_id, final_path=out_dub, speed="Đã lồng tiếng", progress=100.0, status="READY")
+            broadcast_sync({"event": "task_done", "session_id": sid, "data": {"id": req.task_id, "session_id": sid, "status": "READY", "final_path": out_dub}})
+        except Exception as e:
+            update_task(req.task_id, error_log=f"Lỗi lồng tiếng: {str(e)[:150]}")
+            broadcast_sync({"event": "task_error", "session_id": sid, "data": {"id": req.task_id, "session_id": sid, "error": str(e)[:150]}})
+
+    bg_tasks.add_task(run_dub)
+    return {"status": "dubbing_started"}
+
+
+@app.post("/api/ai/highlights")
+async def api_highlights(req: HighlightsRequest):
+    task = get_task(req.task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tác vụ")
+    src_path = task.get("raw_path") or task.get("final_path")
+    if not src_path or not os.path.exists(src_path):
+        raise HTTPException(status_code=400, detail="Không tìm thấy tệp video để cắt Highlights")
+
+    try:
+        data = extract_smart_viral_clips(
+            video_path=src_path,
+            task_id=req.task_id,
+            num_clips=req.num_clips or 3,
+            clip_duration=req.clip_duration or 45
+        )
+        return {"status": "success", "data": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi cắt Highlights: {str(e)[:200]}")
+
+
+@app.get("/api/highlights/{task_id}/clip/{clip_num}")
+async def api_download_highlight_clip(task_id: int, clip_num: int):
+    clip_filename = f"highlight_{task_id}_clip_{clip_num}.mp4"
+    clip_path = os.path.join(PROCESSED_DIR, clip_filename)
+    if not os.path.exists(clip_path):
+        raise HTTPException(status_code=404, detail="Clip không tồn tại hoặc chưa được cắt")
+    return FileResponse(path=clip_path, filename=clip_filename, media_type="video/mp4")
+
+
+@app.get("/api/highlights/{task_id}/zip")
+async def api_download_highlight_zip(task_id: int):
+    zip_filename = f"viral_highlights_{task_id}.zip"
+    zip_path = os.path.join(PROCESSED_DIR, zip_filename)
+    if not os.path.exists(zip_path):
+        raise HTTPException(status_code=404, detail="Gói ZIP không tồn tại hoặc chưa được tạo")
+    return FileResponse(path=zip_path, filename=zip_filename, media_type="application/zip")
+
+
+
 
 @app.get("/api/download/{task_id}")
 async def api_download_file(task_id: int, type: Optional[str] = None):
@@ -447,6 +573,34 @@ async def api_download_file(task_id: int, type: Optional[str] = None):
                     raise HTTPException(status_code=500, detail=f"Lỗi nén video: {str(e)[:150]}")
             else:
                 raise HTTPException(status_code=404, detail="Không tìm thấy file nguồn để nén")
+
+    elif type == "captioned":
+        cap_path = os.path.join(PROCESSED_DIR, f"captioned_{task_id}.mp4")
+        if os.path.exists(cap_path):
+            target_path = cap_path
+        else:
+            src_path = task.get("raw_path") or task.get("final_path")
+            if src_path and os.path.exists(src_path):
+                try:
+                    target_path = apply_ai_autocaptions(src_path, output_path=cap_path)
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=f"Lỗi tạo phụ đề: {str(e)[:150]}")
+            else:
+                raise HTTPException(status_code=404, detail="Không tìm thấy file nguồn để tạo phụ đề")
+
+    elif type == "dubbed":
+        dub_path = os.path.join(PROCESSED_DIR, f"dubbed_{task_id}.mp4")
+        if os.path.exists(dub_path):
+            target_path = dub_path
+        else:
+            src_path = task.get("raw_path") or task.get("final_path")
+            if src_path and os.path.exists(src_path):
+                try:
+                    target_path = apply_ai_voiceover_dubbing(src_path, output_path=dub_path)
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=f"Lỗi lồng tiếng: {str(e)[:150]}")
+            else:
+                raise HTTPException(status_code=404, detail="Không tìm thấy file nguồn để lồng tiếng")
 
     elif type in ("clean", "raw"):
         # Video sạch gốc không logo

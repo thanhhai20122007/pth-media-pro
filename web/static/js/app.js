@@ -358,8 +358,16 @@ function renderTasks() {
                             </a>
                         </div>
 
-                        <!-- Các công cụ: Xem thử, mở thư mục, xóa -->
+                        <!-- Các công cụ: AI Studio, Highlights, Xem thử, mở thư mục, xóa -->
                         <div class="flex items-center justify-end space-x-1.5 pt-1 sm:pt-0">
+                            <button onclick="openAiStudio(${task.id})" class="px-2.5 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 hover:text-purple-300 text-[11px] sm:text-xs font-bold transition flex items-center space-x-1 border border-purple-500/30 active:scale-95" title="Tạo phụ đề CapCut & Lồng tiếng AI">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                                <span class="hidden sm:inline">AI Studio</span>
+                            </button>
+                            <button onclick="openHighlightsModal(${task.id})" class="px-2.5 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 hover:text-cyan-300 text-[11px] sm:text-xs font-bold transition flex items-center space-x-1 border border-cyan-500/30 active:scale-95" title="AI Cắt 3-5 clip ngắn 9:16 Shorts/TikTok">
+                                <i class="fa-solid fa-scissors"></i>
+                                <span class="hidden sm:inline">Highlights</span>
+                            </button>
                             <button onclick="playVideo(${task.id}, '${encodeURIComponent(finalFile)}', '${encodeURIComponent(titleText)}')" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-teal-400 hover:text-teal-300 text-xs font-semibold transition" title="Xem trước video">
                                 <i class="fa-solid fa-play"></i>
                             </button>
@@ -802,3 +810,225 @@ function copyMobileUrl() {
         showToast('Đã sao chép liên kết cho điện thoại!', 'success');
     }
 }
+
+// ==================== PTH AI STUDIO PRO ====================
+let currentAiTaskId = null;
+let currentHighlightsTaskId = null;
+
+function openAiStudio(taskId) {
+    currentAiTaskId = taskId;
+    openModal('aiStudioModal');
+}
+
+function switchAiTab(tab) {
+    const capDiv = document.getElementById('aiTabCaptions');
+    const dubDiv = document.getElementById('aiTabDubbing');
+    const capBtn = document.getElementById('tabAiCaptionsBtn');
+    const dubBtn = document.getElementById('tabAiDubbingBtn');
+
+    if (tab === 'dubbing') {
+        if (capDiv) capDiv.classList.add('hidden');
+        if (dubDiv) dubDiv.classList.remove('hidden');
+        if (capBtn) capBtn.className = 'flex-1 py-2 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center space-x-1.5';
+        if (dubBtn) dubBtn.className = 'flex-1 py-2 rounded-lg bg-slate-800 text-purple-400 shadow transition flex items-center justify-center space-x-1.5';
+    } else {
+        if (dubDiv) dubDiv.classList.add('hidden');
+        if (capDiv) capDiv.classList.remove('hidden');
+        if (dubBtn) dubBtn.className = 'flex-1 py-2 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center space-x-1.5';
+        if (capBtn) capBtn.className = 'flex-1 py-2 rounded-lg bg-slate-800 text-yellow-400 shadow transition flex items-center justify-center space-x-1.5';
+    }
+}
+
+async function triggerAiCaptions() {
+    if (!currentAiTaskId) return;
+    const style = document.getElementById('captionStylePreset')?.value || 'capcut_yellow';
+    const pos = document.getElementById('captionPosition')?.value || 'bottom';
+    const skip = document.getElementById('captionSkipIfExists')?.checked ?? true;
+    const btn = document.getElementById('btnRunCaptions');
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i> Đang nhận diện & tạo chữ...`;
+    }
+
+    try {
+        const res = await fetch('/api/ai/autocaptions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                task_id: currentAiTaskId,
+                style_preset: style,
+                position: pos,
+                skip_if_exists: skip
+            })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            showToast('🚀 Đang chạy tạo phụ đề CapCut trong nền...', 'info');
+            closeModal('aiStudioModal');
+            loadTasks();
+        } else {
+            showToast(data.detail || 'Lỗi khi kích hoạt tạo phụ đề', 'error');
+        }
+    } catch (e) {
+        showToast('Lỗi kết nối máy chủ', 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Tạo Phụ Đề CapCut Ngay`;
+        }
+    }
+}
+
+async function triggerAiDubbing() {
+    if (!currentAiTaskId) return;
+    const isEnabled = document.getElementById('dubbingEnabledToggle')?.checked ?? true;
+    if (!isEnabled) {
+        showToast('Chế độ lồng tiếng đang tắt. Vui lòng gạt công tắc BẬT để dùng!', 'warning');
+        return;
+    }
+
+    const voice = document.getElementById('dubbingVoiceType')?.value || 'male_north';
+    const btn = document.getElementById('btnRunDubbing');
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i> Đang dịch & lồng tiếng...`;
+    }
+
+    try {
+        const res = await fetch('/api/ai/dubbing', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                task_id: currentAiTaskId,
+                voice_type: voice
+            })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            showToast('🎙️ Đang dịch và lồng tiếng AI trong nền...', 'info');
+            closeModal('aiStudioModal');
+            loadTasks();
+        } else {
+            showToast(data.detail || 'Lỗi khi kích hoạt lồng tiếng', 'error');
+        }
+    } catch (e) {
+        showToast('Lỗi kết nối máy chủ', 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fa-solid fa-microphone-lines mr-1"></i> Bắt Đầu Lồng Tiếng`;
+        }
+    }
+}
+
+function openHighlightsModal(taskId) {
+    currentHighlightsTaskId = taskId;
+    const zipSec = document.getElementById('hlZipSection');
+    if (zipSec) zipSec.classList.add('hidden');
+    const container = document.getElementById('hlClipsContainer');
+    if (container) {
+        container.innerHTML = `
+            <div class="text-center py-10 text-slate-500 text-xs space-y-1">
+                <i class="fa-solid fa-clapperboard text-3xl text-slate-600 mb-2"></i>
+                <p>Bấm nút <b>"Quét & Cắt Highlights"</b> ở trên để AI tự động tìm đoạn hay nhất!</p>
+            </div>
+        `;
+    }
+    openModal('highlightsModal');
+}
+
+async function generateViralHighlights() {
+    if (!currentHighlightsTaskId) return;
+    const numClips = parseInt(document.getElementById('hlNumClips')?.value || '3');
+    const duration = parseInt(document.getElementById('hlClipDuration')?.value || '45');
+    const btn = document.getElementById('btnGenerateHighlights');
+    const container = document.getElementById('hlClipsContainer');
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i> Đang quét cao trào...`;
+    }
+
+    if (container) {
+        container.innerHTML = `
+            <div class="text-center py-10 text-cyan-400 text-xs space-y-2">
+                <i class="fa-solid fa-spinner fa-spin text-3xl"></i>
+                <p class="font-bold">AI đang phân tích âm thanh, chuyển cảnh và render clip 9:16...</p>
+                <p class="text-slate-500 text-[11px]">Quá trình này mất khoảng 5-15 giây</p>
+            </div>
+        `;
+    }
+
+    try {
+        const res = await fetch('/api/ai/highlights', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                task_id: currentHighlightsTaskId,
+                num_clips: numClips,
+                clip_duration: duration
+            })
+        });
+        const data = await res.json();
+        if (res.ok && data.data) {
+            const hData = data.data;
+            showToast(`🎉 Đã tạo thành công ${hData.total_clips} clip ngắn viral!`, 'success');
+
+            // Hiển thị nút tải trọn bộ ZIP
+            const zipSec = document.getElementById('hlZipSection');
+            const zipBtn = document.getElementById('hlZipDownloadBtn');
+            const zipTitle = document.getElementById('hlZipTitle');
+            if (zipSec && zipBtn) {
+                zipSec.classList.remove('hidden');
+                zipBtn.href = hData.zip_url;
+                if (zipTitle) zipTitle.textContent = `Đã cắt thành công ${hData.total_clips} clip (${formatBytes(hData.zip_size)})`;
+            }
+
+            // Render từng clip
+            if (container) {
+                container.innerHTML = hData.clips.map(clip => `
+                    <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-center justify-between gap-3 hover:border-slate-700 transition">
+                        <div class="flex items-center space-x-3 min-w-0">
+                            <div class="w-10 h-10 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-sm flex-shrink-0">
+                                #${clip.clip_number}
+                            </div>
+                            <div class="min-w-0">
+                                <div class="text-white font-bold text-xs truncate">Clip Viral #${clip.clip_number} (Dọc 9:16)</div>
+                                <div class="text-slate-400 text-[11px] flex items-center space-x-2 pt-0.5">
+                                    <span><i class="fa-regular fa-clock mr-1 text-slate-500"></i>${clip.time_range} (${clip.duration}s)</span>
+                                    <span>•</span>
+                                    <span>${formatBytes(clip.file_size)}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center space-x-2 flex-shrink-0">
+                            <a href="${clip.download_url}" download class="py-1.5 px-3 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 hover:text-cyan-300 text-xs font-bold transition flex items-center space-x-1 border border-cyan-500/30 active:scale-95">
+                                <i class="fa-solid fa-cloud-arrow-down"></i>
+                                <span>Tải Clip</span>
+                            </a>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        } else {
+            showToast(data.detail || 'Không thể tạo clip viral từ video này', 'error');
+            if (container) {
+                container.innerHTML = `<div class="text-center py-8 text-red-400 text-xs">${data.detail || 'Lỗi khi cắt video'}</div>`;
+            }
+        }
+    } catch (e) {
+        showToast('Lỗi kết nối máy chủ', 'error');
+        if (container) {
+            container.innerHTML = `<div class="text-center py-8 text-red-400 text-xs">Lỗi kết nối máy chủ</div>`;
+        }
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fa-solid fa-bolt mr-1"></i> Quét & Cắt Highlights`;
+        }
+    }
+}
+

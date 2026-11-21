@@ -526,6 +526,177 @@
         </div>
     </div>
 
+    <!-- ==================== MODAL: AI STUDIO (CAPCUT CAPTIONS & VOICE DUBBING) ==================== -->
+    <div id="aiStudioModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl relative">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div class="flex items-center space-x-2">
+                    <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-purple-500 to-pink-500 flex items-center justify-center text-white text-sm">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-white text-base">PTH AI Studio Pro</h3>
+                        <p class="text-[11px] text-slate-400">Tạo phụ đề chạy chữ CapCut & Lồng tiếng AI thông minh</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('aiStudioModal')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+
+            <!-- Tab Selection -->
+            <div class="flex items-center space-x-2 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-semibold">
+                <button type="button" id="tabAiCaptionsBtn" onclick="switchAiTab('captions')" class="flex-1 py-2 rounded-lg bg-slate-800 text-yellow-400 shadow transition flex items-center justify-center space-x-1.5">
+                    <i class="fa-solid fa-closed-captioning"></i>
+                    <span>Phụ Đề Chữ CapCut</span>
+                </button>
+                <button type="button" id="tabAiDubbingBtn" onclick="switchAiTab('dubbing')" class="flex-1 py-2 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center space-x-1.5">
+                    <i class="fa-solid fa-microphone-lines"></i>
+                    <span>AI Lồng Tiếng Đa Vùng Miền</span>
+                </button>
+            </div>
+
+            <!-- Tab 1: Phụ Đề CapCut -->
+            <div id="aiTabCaptions" class="space-y-3.5 text-xs">
+                <div>
+                    <label class="font-semibold text-white block mb-1">Phong Cách Chữ Hoạt Hình:</label>
+                    <select id="captionStylePreset" class="w-full bg-slate-950 border border-slate-700 text-white rounded-xl p-2.5 font-medium">
+                        <option value="capcut_yellow" selected>✨ Vàng Rực Rỡ CapCut (Chữ vàng, viền đen - Hút view nhất)</option>
+                        <option value="neon_green">⚡ Xanh Cyberpunk Neon (Trẻ trung, công nghệ)</option>
+                        <option value="modern_white">💎 Trắng Tinh Tế (Thanh lịch, phóng sự)</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="font-semibold text-white block mb-1">Vị Trí Hiển Thị Phụ Đề:</label>
+                    <select id="captionPosition" class="w-full bg-slate-950 border border-slate-700 text-white rounded-xl p-2.5 font-medium">
+                        <option value="bottom" selected>Dưới Đáy Màn Hình (Chuẩn TikTok / Reels)</option>
+                        <option value="center">Giữa Tâm Video (Thu hút sự chú ý)</option>
+                        <option value="top">Trên Đỉnh Video</option>
+                    </select>
+                </div>
+
+                <!-- Checkbox skip existing -->
+                <div class="flex items-center space-x-2.5 bg-slate-950 p-3 rounded-xl border border-slate-800">
+                    <input type="checkbox" id="captionSkipIfExists" class="w-4 h-4 rounded text-emerald-500 bg-slate-800 border-slate-700 focus:ring-0 cursor-pointer" checked>
+                    <label for="captionSkipIfExists" class="text-slate-300 text-xs cursor-pointer select-none">
+                        Không dịch / Không đè chữ nếu video <b>đã có sẵn phụ đề</b>
+                    </label>
+                </div>
+
+                <div class="flex justify-end space-x-2 pt-2 border-t border-slate-800">
+                    <button onclick="closeModal('aiStudioModal')" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-semibold">Đóng</button>
+                    <button id="btnRunCaptions" onclick="triggerAiCaptions()" class="px-5 py-2 rounded-lg bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-950 text-xs font-bold shadow-md shadow-yellow-500/20 flex items-center space-x-1.5">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                        <span>Tạo Phụ Đề CapCut Ngay</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tab 2: Lồng Tiếng Đa Vùng Miền -->
+            <div id="aiTabDubbing" class="space-y-3.5 text-xs hidden">
+                <div class="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-300 text-[11px] leading-relaxed">
+                    💡 <b>Tính năng:</b> Tự động nhận diện tiếng Trung (Douyin) hoặc tiếng Anh $\rightarrow$ Dịch sang Tiếng Việt $\rightarrow$ Đọc lồng tiếng truyền cảm và giữ lại 18% nhạc nền gốc.
+                </div>
+
+                <div>
+                    <label class="font-semibold text-white block mb-1">Chọn Giọng Đọc AI & Vùng Miền:</label>
+                    <select id="dubbingVoiceType" class="w-full bg-slate-950 border border-slate-700 text-white rounded-xl p-2.5 font-medium">
+                        <option value="male_north" selected>👨 Nam Miền Bắc (Trầm ấm, review phim / kể chuyện)</option>
+                        <option value="female_north">👩 Nữ Miền Bắc (Chuẩn MC truyền hình, truyền cảm)</option>
+                        <option value="female_sweet">👧 Nữ Trẻ Trung (Ngọt ngào, vlog cuộc sống, bán hàng)</option>
+                        <option value="male_dynamic">🧑 Nam Năng Động (Nhanh nhẹn, tin tức xu hướng)</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
+                    <div>
+                        <div class="font-semibold text-white">Chế Độ Bật / Tắt Lồng Tiếng</div>
+                        <div class="text-[11px] text-slate-400">Bật để kích hoạt quy trình dịch và lồng tiếng</div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="dubbingEnabledToggle" class="sr-only peer" checked>
+                        <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-500"></div>
+                    </label>
+                </div>
+
+                <div class="flex justify-end space-x-2 pt-2 border-t border-slate-800">
+                    <button onclick="closeModal('aiStudioModal')" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-semibold">Đóng</button>
+                    <button id="btnRunDubbing" onclick="triggerAiDubbing()" class="px-5 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white text-xs font-bold shadow-md shadow-purple-500/20 flex items-center space-x-1.5">
+                        <i class="fa-solid fa-microphone-lines"></i>
+                        <span>Bắt Đầu Lồng Tiếng</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== MODAL: SMART HIGHLIGHTS VIRAL CLIPS ==================== -->
+    <div id="highlightsModal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full p-6 space-y-4 shadow-2xl max-h-[90vh] flex flex-col">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3 flex-shrink-0">
+                <div class="flex items-center space-x-2">
+                    <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyan-500 to-blue-500 flex items-center justify-center text-white text-sm">
+                        <i class="fa-solid fa-scissors"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-white text-base">AI Cắt Video Viral Shorts (Dọc 9:16)</h3>
+                        <p class="text-[11px] text-slate-400">Tự động phát hiện cao trào & trích xuất 3-5 clip ngắn đăng TikTok/Reels</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('highlightsModal')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+
+            <!-- Generator Controls -->
+            <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between gap-3 flex-shrink-0 text-xs">
+                <div class="flex items-center space-x-3">
+                    <div>
+                        <label class="text-slate-400 block mb-1">Số clip muốn cắt:</label>
+                        <select id="hlNumClips" class="bg-slate-800 border border-slate-700 text-white rounded-lg px-2.5 py-1.5 font-bold">
+                            <option value="3" selected>3 Clip Hay Nhất</option>
+                            <option value="4">4 Clip Hay Nhất</option>
+                            <option value="5">5 Clip Hay Nhất</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-slate-400 block mb-1">Độ dài mỗi clip:</label>
+                        <select id="hlClipDuration" class="bg-slate-800 border border-slate-700 text-white rounded-lg px-2.5 py-1.5 font-bold">
+                            <option value="30">30 Giây (Chuẩn TikTok)</option>
+                            <option value="45" selected>45 Giây (Lý tưởng Shorts)</option>
+                            <option value="60">60 Giây (Tối đa Reels)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button id="btnGenerateHighlights" onclick="generateViralHighlights()" class="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white font-bold transition flex items-center space-x-1.5 shadow-md shadow-cyan-500/20 active:scale-95">
+                    <i class="fa-solid fa-bolt"></i>
+                    <span>Quét & Cắt Highlights</span>
+                </button>
+            </div>
+
+            <!-- Download All ZIP button (shown when clips ready) -->
+            <div id="hlZipSection" class="hidden flex-shrink-0 bg-emerald-500/10 border border-emerald-500/30 p-3 rounded-xl flex items-center justify-between">
+                <div class="flex items-center space-x-2 text-xs">
+                    <i class="fa-solid fa-file-zipper text-emerald-400 text-lg"></i>
+                    <div>
+                        <div class="font-bold text-white" id="hlZipTitle">Đã cắt thành công 3 clip viral!</div>
+                        <div class="text-[11px] text-slate-400">Tất cả clip đã được chuyển sang định dạng dọc 9:16 có nền mờ nghệ thuật</div>
+                    </div>
+                </div>
+                <a id="hlZipDownloadBtn" href="#" download class="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs transition shadow-md shadow-emerald-500/20 flex items-center space-x-1.5 active:scale-95">
+                    <i class="fa-solid fa-cloud-arrow-down"></i>
+                    <span>TẢI TẤT CẢ (.ZIP)</span>
+                </a>
+            </div>
+
+            <!-- Clips List Container -->
+            <div id="hlClipsContainer" class="flex-1 overflow-y-auto space-y-2.5 pr-1">
+                <div class="text-center py-10 text-slate-500 text-xs space-y-1">
+                    <i class="fa-solid fa-clapperboard text-3xl text-slate-600 mb-2"></i>
+                    <p>Bấm nút <b>"Quét & Cắt Highlights"</b> ở trên để AI tự động tìm đoạn hay nhất!</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Notification Toast Container -->
     <div id="toastContainer" class="fixed bottom-5 right-5 z-50 space-y-2 pointer-events-none"></div>
 
