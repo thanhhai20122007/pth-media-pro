@@ -3,9 +3,10 @@ import re
 import time
 import json
 import asyncio
+import mimetypes
 from typing import List, Dict, Optional
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks, Header
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -431,9 +432,88 @@ async def api_open_folder(req: OpenFolderRequest):
     return {"status": "success" if success else "error", "path": folder}
 
 
-@app.get("/media/preview")
-async def api_media_preview(path: str):
-    """Xem trước video hoặc audio trực tiếp trên trình duyệt"""
+def stream_file_with_range(path: str, range_header: Optional[str] = None):
+    """
+    Phát trực tuyến video/audio hỗ trợ chuẩn HTTP 206 Partial Content (Byte-Range requests).
+    Đây là tiêu chuẩn bắt buộc của iOS Safari (iPhone / iPad / Mac) để xem trước video mượt mà.
+    """
     if not path or not os.path.exists(path):
         raise HTTPException(status_code=404, detail="Tệp không tồn tại")
-    return FileResponse(path)
+
+    file_size = os.path.getsize(path)
+    content_type = mimetypes.guess_type(path)[0] or "video/mp4"
+
+    if range_header:
+        # Xử lý dải byte yêu cầu từ Safari e.g. "bytes=0-1" hoặc "bytes=0-"
+        try:
+            h_range = range_header.strip()
+            if h_range.startswith("bytes="):
+                h_range = h_range[6:]
+            parts = h_range.split("-")
+            start = int(parts[0]) if parts[0] else 0
+            end = int(parts[1]) if len(parts) > 1 and parts[1] else file_size - 1
+        except Exception:
+            start = 0
+            end = file_size - 1
+
+        if start >= file_size:
+            start = max(0, file_size - 1)
+        if end >= file_size:
+            end = file_size - 1
+        if end < start:
+            end = start
+
+        chunk_length = (end - start) + 1
+
+        def range_generator():
+            with open(path, "rb") as f:
+                f.seek(start)
+                left = chunk_length
+                while left > 0:
+                    read_size = min(left, 1024 * 512)
+                    chunk = f.read(read_size)
+                    if not chunk:
+                        break
+                    left -= len(chunk)
+                    yield chunk
+
+        headers = {
+            "Content-Range": f"bytes {start}-{end}/{file_size}",
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(chunk_length),
+            "Content-Type": content_type,
+        }
+        return StreamingResponse(range_generator(), status_code=206, headers=headers)
+
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Content-Length": str(file_size),
+        "Content-Type": content_type,
+    }
+
+    def full_generator():
+        with open(path, "rb") as f:
+            while chunk := f.read(1024 * 512):
+                yield chunk
+
+    return StreamingResponse(full_generator(), status_code=200, headers=headers)
+
+
+@app.get("/media/stream/{task_id}")
+async def api_media_stream_by_id(task_id: int, range: Optional[str] = Header(None)):
+    """Phát video trực tiếp qua ID tác vụ cho iPhone / Android"""
+    task = get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tác vụ")
+    path = task.get("final_path") or task.get("raw_path")
+    if not path or not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Tệp video không tồn tại")
+    return stream_file_with_range(path, range)
+
+
+@app.get("/media/preview")
+async def api_media_preview(path: str, range: Optional[str] = Header(None)):
+    """Xem trước video hoặc audio trực tiếp trên trình duyệt (hỗ trợ Safari)"""
+    if not path or not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Tệp không tồn tại")
+    return stream_file_with_range(path, range)

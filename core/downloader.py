@@ -263,6 +263,7 @@ def download_with_ytdlp_engine(
             if progress_callback:
                 progress_callback(99.5, "Hoàn tất xuất file...")
 
+    # Cấu hình đa luồng tải mảnh video (HLS/DASH) siêu tốc
     ydl_opts = {
         "outtmpl": out_template,
         "ffmpeg_location": BIN_DIR,
@@ -270,26 +271,33 @@ def download_with_ytdlp_engine(
         "no_playlist": True,
         "quiet": True,
         "no_warnings": True,
-        "concurrent_fragment_downloads": 16,  # Tải song song 16 luồng phân đoạn video siêu tốc
-        "buffersize": 2 * 1024 * 1024,        # Bộ đệm mở rộng 2MB
-        "http_chunk_size": 10485760,          # Chunk 10MB
-        "retries": 5,
-        "fragment_retries": 5,
+        "concurrent_fragment_downloads": 8,  # 8 luồng song song ổn định không bị nghẽn
+        "buffersize": 1024 * 1024,
+        "http_chunk_size": 10485760,         # 10MB chunk
+        "retries": 10,
+        "fragment_retries": 10,
         "continuedl": True,
+        "socket_timeout": 30,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "web"],
+                "player_skip": ["configs", "webpage"]
+            }
+        }
     }
 
-    # Tối ưu hóa tải siêu tốc đa luồng với aria2c (16 kết nối song song) cho YouTube, Facebook và video dài
+    # Tối ưu hóa tải với aria2c an toàn không bị chặn 403 bởi YouTube/Facebook CDN
     aria2_exe = os.path.join(BIN_DIR, "aria2c.exe") if sys.platform == "win32" else "aria2c"
     has_aria2 = os.path.exists(aria2_exe) if sys.platform == "win32" else True
-    if has_aria2 and platform not in ("tiktok", "douyin"):
+    if has_aria2 and platform not in ("tiktok", "douyin", "youtube"):
         ydl_opts["external_downloader"] = {"default": aria2_exe}
         ydl_opts["external_downloader_args"] = {
             "default": [
-                "-s", "16",
-                "-x", "16",
+                "-s", "8",
+                "-x", "8",
                 "-k", "1M",
                 "--min-split-size=1M",
-                "--max-connection-per-server=16",
+                "--max-connection-per-server=8",
                 "--file-allocation=none",
                 "--summary-interval=0"
             ]
@@ -314,11 +322,15 @@ def download_with_ytdlp_engine(
             ],
         })
     else:
-        # TikTok: Ưu tiên định dạng KHÔNG LOGO (format_note!=watermarked)
+        # Chuẩn hóa độ phân giải: Giới hạn tối đa 1080p Full HD để tải nhanh tức thì trên cả video dài lẫn ngắn
         if platform == "tiktok":
             ydl_opts["format"] = "bestvideo[format_note!=watermarked]+bestaudio/best[format_note!=watermarked]/best"
+        elif platform == "youtube":
+            ydl_opts["format"] = "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best"
+        elif platform == "facebook":
+            ydl_opts["format"] = "best[height<=1080]/bestvideo[height<=1080]+bestaudio/best"
         else:
-            ydl_opts["format"] = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best"
+            ydl_opts["format"] = "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]/best"
         ydl_opts["merge_output_format"] = "mp4"
 
     # Kiểm tra nếu có cookie file trong profiles/browser_data hoặc data/
@@ -326,8 +338,17 @@ def download_with_ytdlp_engine(
     if os.path.exists(cookie_file):
         ydl_opts["cookiefile"] = cookie_file
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+    except Exception as first_err:
+        print(f"[SmartDownloader] Tải lần 1 gặp lỗi ({str(first_err)[:100]}). Kích hoạt cơ chế tải dự phòng siêu tốc...")
+        # Loại bỏ external_downloader và hạ cấp sang định dạng tương thích cao nhất
+        ydl_opts.pop("external_downloader", None)
+        ydl_opts.pop("external_downloader_args", None)
+        ydl_opts["format"] = "best[height<=1080]/best[height<=720]/best"
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
         raw_title = info.get("title", "")
         author = info.get("uploader") or info.get("channel") or info.get("creator") or "User"
         thumbnail = info.get("thumbnail", "")

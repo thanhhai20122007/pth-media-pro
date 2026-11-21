@@ -583,6 +583,16 @@ function playVideo(taskId, encodedPath, encodedTitle) {
     const dlProcessed = document.getElementById('playerDlProcessed');
     const dlAudio = document.getElementById('playerDlAudio');
 
+    titleEl.textContent = title;
+
+    // Stream trực tiếp theo taskId hỗ trợ Range HTTP 206 cho iPhone / Android
+    if (taskId) {
+        video.src = `/media/stream/${taskId}`;
+    } else {
+        video.src = `/media/preview?path=${encodeURIComponent(rawPath)}`;
+    }
+    video.load();
+
     if (taskId) {
         if (dlClean) dlClean.href = `/api/download/${taskId}?type=clean`;
         if (dlProcessed) dlProcessed.href = `/api/download/${taskId}?type=processed`;
@@ -590,13 +600,23 @@ function playVideo(taskId, encodedPath, encodedTitle) {
     }
 
     modal.classList.remove('hidden');
+
+    const playPromise = video.play();
+    if (playPromise !== undefined) {
+        playPromise.catch(() => {
+            console.log('iOS chặn tự động phát có âm thanh, người dùng bấm Play thủ công');
+        });
+    }
 }
 
 function closePlayerModal() {
     const modal = document.getElementById('playerModal');
     const video = document.getElementById('videoElement');
-    video.pause();
-    video.src = '';
+    if (video) {
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+    }
     modal.classList.add('hidden');
 }
 

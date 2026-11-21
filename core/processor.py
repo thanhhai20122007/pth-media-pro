@@ -111,7 +111,7 @@ def apply_anti_duplicate_filter(
             f"{filter_complex};[1:v]scale=180:-1,format=rgba,colorchannelmixer=aa={watermark_opacity}[wm];[v_out][wm]overlay={wm_pos_str}",
             "-af", f"atempo={atempo},equalizer=f=1000:t=q:w=1:g=0.3",
             "-map_metadata", "-1",
-            "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+            "-c:v", "libx264", "-preset", "ultrafast", "-threads", "0", "-crf", "22",
             "-c:a", "aac", "-b:a", "192k",
             "-movflags", "+faststart",
             output_path
@@ -125,7 +125,7 @@ def apply_anti_duplicate_filter(
             "-map", "0:a?",
             "-af", f"atempo={atempo},equalizer=f=1000:t=q:w=1:g=0.3",
             "-map_metadata", "-1",
-            "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+            "-c:v", "libx264", "-preset", "ultrafast", "-threads", "0", "-crf", "22",
             "-c:a", "aac", "-b:a", "192k",
             "-movflags", "+faststart",
             output_path

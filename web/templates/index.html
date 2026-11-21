@@ -352,7 +352,7 @@
                 <button onclick="closePlayerModal()" class="text-slate-400 hover:text-white p-1"><i class="fa-solid fa-xmark text-lg"></i></button>
             </div>
             <div class="aspect-video bg-black rounded-xl overflow-hidden flex items-center justify-center">
-                <video id="videoElement" controls autoplay class="w-full h-full max-h-[70vh] object-contain"></video>
+                <video id="videoElement" controls playsinline webkit-playsinline preload="auto" class="w-full h-full max-h-[70vh] object-contain"></video>
             </div>
             <div class="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 pt-2 border-t border-slate-800">
                 <div class="grid grid-cols-3 gap-2 flex-1">
