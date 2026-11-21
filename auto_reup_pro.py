@@ -10,7 +10,10 @@ import threading
 import subprocess
 import requests
 import pyperclip
-from playwright.sync_api import sync_playwright
+try:
+    from playwright.sync_api import sync_playwright
+except ImportError:
+    sync_playwright = None
 
 # ==================== 1. CẤU HÌNH TÙY CHỈNH ====================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))

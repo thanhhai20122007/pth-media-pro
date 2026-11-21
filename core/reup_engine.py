@@ -3,7 +3,10 @@ import re
 import time
 import random
 from typing import Optional
-from playwright.sync_api import sync_playwright
+try:
+    from playwright.sync_api import sync_playwright
+except ImportError:
+    sync_playwright = None
 from core.config import BROWSER_DATA_DIR, DEFAULT_SETTINGS
 from core.database import get_setting, update_task, get_tasks
 
@@ -24,9 +27,17 @@ def clean_caption(raw_title: str) -> str:
 
 def run_login_session():
     """Mở trình duyệt Playwright để người dùng đăng nhập tài khoản một lần và lưu Cookie."""
+    if sync_playwright is None:
+        print("[ReupEngine] Playwright chưa được cài đặt.")
+        return
+
     print("=" * 60)
     print("Đang mở trình duyệt để lưu phiên đăng nhập...")
     print("Hãy đăng nhập TikTok, Facebook, Threads trên các tab, sau đó chỉ cần tắt trình duyệt.")
+    if sync_playwright is None:
+        print("[ReupEngine] Playwright chưa được cài đặt.")
+        return
+
     print("=" * 60)
 
     with sync_playwright() as p:

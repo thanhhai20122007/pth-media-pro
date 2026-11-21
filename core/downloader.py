@@ -10,7 +10,10 @@ from typing import Dict, Any, Optional, Callable
 
 import yt_dlp
 from yt_dlp.networking.impersonate import ImpersonateTarget
-from playwright.sync_api import sync_playwright
+try:
+    from playwright.sync_api import sync_playwright
+except ImportError:
+    sync_playwright = None
 
 from core.config import (
     BIN_DIR,
@@ -148,6 +151,9 @@ def extract_with_playwright_browser(
     ENGINE DỰ PHÒNG: Dùng Playwright với Cookie phiên đăng nhập thật của người dùng
     để bóc tách video từ các trang bị Meta hoặc Cloudflare chặn (Threads, Instagram, Facebook Private)
     """
+    if sync_playwright is None:
+        raise Exception("Playwright chưa được cài đặt trên môi trường này.")
+
     print(f"[PlaywrightEngine] Đang khởi chạy trình duyệt bóc tách: {url}")
     if progress_callback:
         progress_callback(10.0, "Mở trình duyệt...")
