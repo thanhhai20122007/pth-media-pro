@@ -90,8 +90,12 @@ class TaskWorker:
                     })
 
                 dl_info = download_video_smart(url, task_id, format_type, progress_callback=prog_cb)
+                if not dl_info or not isinstance(dl_info, dict):
+                    raise Exception("Không thể lấy thông tin tệp tải về từ máy chủ")
 
-                raw_path = dl_info["file_path"]
+                raw_path = dl_info.get("file_path")
+                if not raw_path or not os.path.exists(raw_path):
+                    raise Exception("Tệp video sau khi tải không tồn tại")
                 title = dl_info.get("title", "Video")
                 author = dl_info.get("author", "")
                 thumbnail = dl_info.get("thumbnail", "")

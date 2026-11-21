@@ -338,6 +338,7 @@ def download_with_ytdlp_engine(
     if os.path.exists(cookie_file):
         ydl_opts["cookiefile"] = cookie_file
 
+    info = None
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
@@ -349,33 +350,44 @@ def download_with_ytdlp_engine(
         ydl_opts["format"] = "best[height<=1080]/best[height<=720]/best"
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-        raw_title = info.get("title", "")
-        author = info.get("uploader") or info.get("channel") or info.get("creator") or "User"
-        thumbnail = info.get("thumbnail", "")
-        duration = info.get("duration", 0)
 
-        target_file = None
-        if "requested_downloads" in info and info["requested_downloads"]:
-            target_file = info["requested_downloads"][0].get("filepath")
-        if not target_file or not os.path.exists(target_file):
-            target_file = ydl.prepare_filename(info)
-            if format_type == "audio":
-                target_file = os.path.splitext(target_file)[0] + ".mp3"
+    if not info:
+        raise Exception("Không thể trích xuất thông tin video.")
 
-        file_size = os.path.getsize(target_file) if os.path.exists(target_file) else 0
+    raw_title = info.get("title", "")
+    author = info.get("uploader") or info.get("channel") or info.get("creator") or "User"
+    thumbnail = info.get("thumbnail", "")
+    duration = info.get("duration", 0)
 
-        if progress_callback:
-            progress_callback(100.0, "Hoàn tất")
+    target_file = None
+    if "requested_downloads" in info and info["requested_downloads"]:
+        target_file = info["requested_downloads"][0].get("filepath")
+    if not target_file or not os.path.exists(target_file):
+        target_file = ydl.prepare_filename(info)
+        if format_type == "audio":
+            target_file = os.path.splitext(target_file)[0] + ".mp3"
 
-        return {
-            "title": raw_title,
-            "author": author,
-            "thumbnail": thumbnail,
-            "duration": duration,
-            "file_path": target_file,
-            "file_size": file_size,
-            "platform": platform,
-        }
+    # Tìm lại file nếu tên tệp chuẩn hóa khác đuôi
+    if not target_file or not os.path.exists(target_file):
+        for fname in os.listdir(out_dir):
+            if f"video_{task_id}_" in fname or f"audio_{task_id}_" in fname:
+                target_file = os.path.join(out_dir, fname)
+                break
+
+    file_size = os.path.getsize(target_file) if target_file and os.path.exists(target_file) else 0
+
+    if progress_callback:
+        progress_callback(100.0, "Hoàn tất")
+
+    return {
+        "title": raw_title,
+        "author": author,
+        "thumbnail": thumbnail,
+        "duration": duration,
+        "file_path": target_file,
+        "file_size": file_size,
+        "platform": platform,
+    }
 
 
 def download_threads_engine(
@@ -498,6 +510,7 @@ def download_video_smart(
     - Tầng dự phòng: Playwright Browser với cookie phiên đăng nhập thực tế
     """
     cleaned_url = url.strip()
+    cleaned_url = resolve_redirect_url(cleaned_url)
     platform = detect_platform(cleaned_url)
 
     print(f"[SmartDownloader] Bắt đầu tải Task #{task_id} | Platform: {platform} | URL: {cleaned_url}")
