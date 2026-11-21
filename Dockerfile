@@ -14,4 +14,4 @@ COPY . .
 ENV PORT=7860
 EXPOSE 7860
 
-CMD ["python", "main.py", "--mode", "headless", "--port", "7860"]
+CMD ["sh", "-c", "python main.py --mode headless --port ${PORT:-7860}"]
