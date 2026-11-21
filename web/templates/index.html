@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>PTH Media Pro - Hệ Thống Tải & Xử Lý Video Đa Nền Tảng</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            500: '#10b981',
+                            600: '#059669',
+                            700: '#047857'
+                        },
+                        dark: {
+                            bg: '#0f172a',
+                            card: '#1e293b',
+                            border: '#334155',
+                            hover: '#273549'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans min-h-screen antialiased flex flex-col">
+
+    <!-- Top Navigation -->
+    <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                    <i class="fa-solid fa-cloud-arrow-down text-white text-xl"></i>
+                </div>
+                <div>
+                    <div class="flex items-center space-x-2">
+                        <span class="font-extrabold text-xl tracking-tight bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 bg-clip-text text-transparent">PTH Media Pro</span>
+                        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase">V2.5 PRO</span>
+                    </div>
+                    <p class="text-xs text-slate-400 hidden sm:block">Tải Video Đa Năng Không Logo • Lách Bản Quyền FFmpeg • Tải Song Song</p>
+                </div>
+            </div>
+
+            <!-- Header Actions -->
+            <div class="flex items-center space-x-2 sm:space-x-3">
+                <!-- Private Session Indicator -->
+                <div class="hidden lg:flex items-center space-x-1.5 bg-slate-800/80 border border-slate-700 px-2.5 py-1.5 rounded-xl text-xs" title="Mỗi thiết bị có một không gian lưu trữ và tải video riêng tư">
+                    <i class="fa-solid fa-user-shield text-emerald-400"></i>
+                    <span class="text-slate-400">Phiên riêng:</span>
+                    <span id="sessionBadge" class="font-mono text-emerald-400 font-bold">...</span>
+                </div>
+
+                <!-- Clipboard Monitor Switch -->
+                <div class="flex items-center space-x-2 bg-slate-800/80 border border-slate-700 px-3 py-1.5 rounded-xl">
+                    <i class="fa-regular fa-clipboard text-emerald-400 text-sm"></i>
+                    <span class="text-xs font-medium text-slate-300 hidden md:inline">Bắt link Clipboard:</span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="clipboardToggle" class="sr-only peer" checked>
+                        <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                    </label>
+                </div>
+
+                <!-- Open Folder Button (Desktop only) -->
+                <button onclick="openFolder('all')" class="hidden sm:flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-3 py-1.5 rounded-xl text-xs font-semibold transition shadow-sm" title="Mở thư mục tải về">
+                    <i class="fa-regular fa-folder-open text-amber-400"></i>
+                    <span>Thư mục tải về</span>
+                </button>
+
+                <!-- Mobile Connect Button (Desktop only) -->
+                <button onclick="openMobileModal()" class="hidden sm:flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-3 py-1.5 rounded-xl text-xs font-semibold transition shadow-sm" title="Mở trên Điện Thoại (Cùng Wi-Fi)">
+                    <i class="fa-solid fa-mobile-screen text-cyan-400"></i>
+                    <span>Dùng trên ĐT</span>
+                </button>
+
+                <!-- Login Session Button (Desktop only) -->
+                <button onclick="triggerLoginSession()" class="hidden md:flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-3 py-1.5 rounded-xl text-xs font-semibold transition shadow-sm" title="Đăng nhập tài khoản lưu Cookie (TikTok, FB, Threads, Insta)">
+                    <i class="fa-solid fa-key text-emerald-400"></i>
+                    <span>Đăng nhập MXH</span>
+                </button>
+
+                <!-- Settings Button -->
+                <button onclick="openModal('settingsModal')" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center justify-center text-slate-300 hover:text-white transition">
+                    <i class="fa-solid fa-gear"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full space-y-6">
+
+        <!-- Banner / Hero Input Box -->
+        <div class="bg-gradient-to-b from-slate-800/90 to-slate-800/50 border border-slate-700/80 rounded-2xl p-5 sm:p-7 shadow-xl relative overflow-hidden">
+            <div class="absolute -top-24 -right-24 w-72 h-72 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+            <div class="absolute -bottom-24 -left-24 w-72 h-72 bg-teal-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+            <div class="relative z-10 space-y-4">
+                <div class="text-center sm:text-left space-y-1">
+                    <h1 class="text-2xl sm:text-3xl font-extrabold text-white">Dán Link Video Để Tải Ngay Lập Tức</h1>
+                    <p class="text-sm text-slate-400">Tự động xóa logo TikTok & Douyin, tải video HD từ Facebook, YouTube, Instagram, Threads, X...</p>
+                </div>
+
+                <!-- Input Form -->
+                <form id="downloadForm" onsubmit="handleDownloadSubmit(event)" class="space-y-3">
+                    <div class="flex flex-col sm:flex-row gap-2">
+                        <div class="relative flex-1">
+                            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                                <i class="fa-solid fa-link text-base"></i>
+                            </div>
+                            <input 
+                                type="text" 
+                                id="urlInput" 
+                                placeholder="Dán 1 hoặc NHIỀU link (TikTok, YouTube, Facebook, Threads, Insta...) - Tự động tải song song" 
+                                class="w-full pl-10 pr-24 py-3.5 bg-slate-900/90 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition text-base font-normal shadow-inner"
+                                required
+                            />
+                            <button 
+                                type="button" 
+                                onclick="handlePasteFromClipboard()" 
+                                class="absolute right-2 top-1/2 -translate-y-1/2 px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg transition"
+                                title="Dán từ Clipboard"
+                            >
+                                <i class="fa-regular fa-paste mr-1"></i> Dán
+                            </button>
+                        </div>
+
+                        <button 
+                            type="submit" 
+                            id="btnSubmit" 
+                            class="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-bold px-7 py-3.5 rounded-xl flex items-center justify-center space-x-2 transition shadow-lg shadow-emerald-500/25 active:scale-95"
+                        >
+                            <i class="fa-solid fa-bolt"></i>
+                            <span>TẢI NGAY</span>
+                        </button>
+                    </div>
+
+                    <!-- Mode Selectors & Quick Actions -->
+                    <div class="flex flex-wrap items-center justify-between gap-3 pt-1">
+                        <!-- Radio Mode Selector -->
+                        <div class="flex flex-wrap items-center gap-2" id="modeSelector">
+                            <label class="cursor-pointer">
+                                <input type="radio" name="downloadMode" value="video" class="peer sr-only" checked>
+                                <span class="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 border border-slate-700 bg-slate-900/70 text-slate-300 peer-checked:bg-emerald-500/20 peer-checked:text-emerald-400 peer-checked:border-emerald-500/40 transition">
+                                    <i class="fa-solid fa-video"></i>
+                                    <span>Video Sạch (Không Logo)</span>
+                                </span>
+                            </label>
+
+                            <label class="cursor-pointer">
+                                <input type="radio" name="downloadMode" value="audio" class="peer sr-only">
+                                <span class="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 border border-slate-700 bg-slate-900/70 text-slate-300 peer-checked:bg-teal-500/20 peer-checked:text-teal-400 peer-checked:border-teal-500/40 transition">
+                                    <i class="fa-solid fa-music"></i>
+                                    <span>Tách Nhạc MP3 320k</span>
+                                </span>
+                            </label>
+
+                            <label class="cursor-pointer">
+                                <input type="radio" name="downloadMode" value="processed" class="peer sr-only">
+                                <span class="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 border border-slate-700 bg-slate-900/70 text-slate-300 peer-checked:bg-purple-500/20 peer-checked:text-purple-400 peer-checked:border-purple-500/40 transition">
+                                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                                    <span>Lách Bản Quyền 9:16 (FFmpeg)</span>
+                                </span>
+                            </label>
+                        </div>
+
+                        <!-- Batch Button -->
+                        <button 
+                            type="button" 
+                            onclick="openModal('batchModal')" 
+                            class="text-xs text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700 border border-slate-700 px-3 py-1.5 rounded-lg font-medium transition flex items-center space-x-1.5"
+                        >
+                            <i class="fa-solid fa-list-check text-cyan-400"></i>
+                            <span>Tải Hàng Loạt (Nhiều Link)</span>
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Supported Platforms Bar -->
+                <div class="flex flex-wrap items-center gap-3 pt-2 text-xs text-slate-400 border-t border-slate-700/50">
+                    <span class="font-medium text-slate-500">Hỗ trợ mạnh mẽ:</span>
+                    <span class="flex items-center space-x-1"><i class="fa-brands fa-tiktok text-pink-400"></i><span>TikTok Không Logo</span></span>
+                    <span class="flex items-center space-x-1"><i class="fa-brands fa-youtube text-red-500"></i><span>YouTube Shorts/Video</span></span>
+                    <span class="flex items-center space-x-1"><i class="fa-brands fa-facebook text-blue-500"></i><span>Facebook Reels HD</span></span>
+                    <span class="flex items-center space-x-1"><i class="fa-brands fa-instagram text-fuchsia-400"></i><span>Instagram</span></span>
+                    <span class="flex items-center space-x-1"><i class="fa-brands fa-threads text-white"></i><span>Threads</span></span>
+                    <span class="flex items-center space-x-1"><i class="fa-brands fa-x-twitter text-slate-200"></i><span>Twitter/X</span></span>
+                    <span class="flex items-center space-x-1"><i class="fa-solid fa-play text-orange-400"></i><span>Douyin HD</span></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Overview Cards -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+            <div class="bg-slate-800/60 border border-slate-700/70 rounded-xl p-4 flex items-center space-x-3.5">
+                <div class="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center text-lg">
+                    <i class="fa-solid fa-layer-group"></i>
+                </div>
+                <div>
+                    <div class="text-xl font-bold text-white" id="statTotal">0</div>
+                    <div class="text-xs text-slate-400 font-medium">Tổng tác vụ</div>
+                </div>
+            </div>
+
+            <div class="bg-slate-800/60 border border-slate-700/70 rounded-xl p-4 flex items-center space-x-3.5">
+                <div class="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center text-lg">
+                    <i class="fa-solid fa-circle-check"></i>
+                </div>
+                <div>
+                    <div class="text-xl font-bold text-white" id="statCompleted">0</div>
+                    <div class="text-xs text-slate-400 font-medium">Đã hoàn thành</div>
+                </div>
+            </div>
+
+            <div class="bg-slate-800/60 border border-slate-700/70 rounded-xl p-4 flex items-center space-x-3.5">
+                <div class="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center text-lg">
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                </div>
+                <div>
+                    <div class="text-xl font-bold text-white" id="statPending">0</div>
+                    <div class="text-xs text-slate-400 font-medium">Đang xử lý</div>
+                </div>
+            </div>
+
+            <div class="bg-slate-800/60 border border-slate-700/70 rounded-xl p-4 flex items-center space-x-3.5">
+                <div class="w-10 h-10 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center text-lg">
+                    <i class="fa-solid fa-hard-drive"></i>
+                </div>
+                <div>
+                    <div class="text-xl font-bold text-white" id="statSize">0 MB</div>
+                    <div class="text-xs text-slate-400 font-medium">Dung lượng video</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Download List Section -->
+        <div class="bg-slate-800/50 border border-slate-700/70 rounded-2xl p-5 space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-700/60 pb-4">
+                <div class="flex items-center space-x-2">
+                    <h2 class="text-lg font-bold text-white">Danh Sách Video</h2>
+                    <span id="taskCountBadge" class="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-700 text-slate-300">0</span>
+                </div>
+
+                <!-- Status Filter Tabs -->
+                <div class="flex items-center space-x-1 bg-slate-900/60 p-1 rounded-xl border border-slate-700/70 text-xs font-medium">
+                    <button onclick="setFilter('all')" id="tabAll" class="px-3 py-1.5 rounded-lg text-white bg-slate-800 shadow">Tất cả</button>
+                    <button onclick="setFilter('processing')" id="tabProcessing" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-white">Đang tải</button>
+                    <button onclick="setFilter('done')" id="tabDone" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-white">Đã xong</button>
+                    <button onclick="setFilter('failed')" id="tabFailed" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-white">Lỗi</button>
+                </div>
+            </div>
+
+            <!-- Task List Container -->
+            <div id="taskList" class="space-y-3">
+                <!-- Sẽ được nạp động từ JavaScript -->
+                <div class="text-center py-12 text-slate-500 space-y-2">
+                    <i class="fa-solid fa-cloud-arrow-down text-4xl text-slate-600"></i>
+                    <p class="text-sm">Chưa có video nào trong danh sách. Hãy dán link hoặc copy link bất kỳ!</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-800 py-4 text-center text-xs text-slate-500">
+        <p>PTH Media Pro • Tải video đa năng không watermark • Hỗ trợ FFmpeg Hardware Acceleration</p>
+    </footer>
+
+    <!-- ==================== MODAL: BATCH DOWNLOAD ==================== -->
+    <div id="batchModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-list-check text-emerald-400 text-lg"></i>
+                    <h3 class="font-bold text-white text-base">Tải Video Hàng Loạt Song Song</h3>
+                </div>
+                <button onclick="closeModal('batchModal')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="flex items-center justify-between text-xs">
+                <span class="text-slate-400">Dán danh sách các link (mỗi dòng một link hoặc cách nhau bằng dấu cách):</span>
+                <button type="button" onclick="pasteAllFromClipboardToBatch()" class="text-emerald-400 hover:text-emerald-300 font-semibold flex items-center space-x-1">
+                    <i class="fa-regular fa-paste"></i>
+                    <span>Dán Clipboard</span>
+                </button>
+            </div>
+            <textarea id="batchUrls" oninput="updateBatchCounter()" rows="7" placeholder="https://www.tiktok.com/@user/video/123&#10;https://www.youtube.com/shorts/xyz&#10;https://www.facebook.com/reel/456&#10;https://www.threads.com/share/789" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white text-xs placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"></textarea>
+            
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <select id="batchFormat" class="bg-slate-800 border border-slate-700 text-xs text-white rounded-lg px-3 py-2">
+                        <option value="video">Video Sạch (Không Logo)</option>
+                        <option value="audio">Chỉ Tách MP3</option>
+                        <option value="processed">Lách Bản Quyền 9:16 (FFmpeg)</option>
+                    </select>
+                    <span id="batchCountBadge" class="text-xs text-emerald-400 font-medium">0 link</span>
+                </div>
+                <div class="flex space-x-2">
+                    <button onclick="closeModal('batchModal')" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-semibold">Hủy</button>
+                    <button onclick="submitBatchDownload()" class="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold shadow-md shadow-emerald-500/20">Tải Tất Cả Cùng Lúc</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== MODAL: MOBILE CONNECT ==================== -->
+    <div id="mobileModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-2xl text-center">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-mobile-screen-button text-cyan-400 text-lg"></i>
+                    <h3 class="font-bold text-white text-base">Kết Nối Với Điện Thoại</h3>
+                </div>
+                <button onclick="closeModal('mobileModal')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <p class="text-xs text-slate-400">Kết nối điện thoại vào <b>cùng mạng Wi-Fi</b> với máy tính rồi mở liên kết bên dưới hoặc quét mã QR:</p>
+            
+            <div class="flex justify-center p-3 bg-white rounded-xl mx-auto w-44 h-44 items-center shadow-lg">
+                <img id="mobileQrImg" src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=http://192.168.1.10:5000" alt="QR Code" class="w-full h-full object-contain">
+            </div>
+
+            <div class="bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-emerald-400 font-mono text-sm font-bold select-all break-all cursor-pointer" onclick="copyMobileUrl()" title="Click để copy">
+                <span id="mobileUrlText">http://192.168.1.10:5000</span>
+            </div>
+
+            <p class="text-[11px] text-slate-500">💡 Mẹo: Nhấp đúp vào <code>CHAY_NGAM_PTH_MEDIA.vbs</code> để tắt CMD mà điện thoại vẫn tải mượt mà!</p>
+
+            <button onclick="closeModal('mobileModal')" class="w-full py-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold">Đóng</button>
+        </div>
+    </div>
+
+    <!-- ==================== MODAL: VIDEO PREVIEW PLAYER ==================== -->
+    <div id="playerModal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-3xl w-full p-5 space-y-3 shadow-2xl relative">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                <h3 id="playerTitle" class="font-bold text-white text-sm truncate max-w-md">Xem trước video</h3>
+                <button onclick="closePlayerModal()" class="text-slate-400 hover:text-white p-1"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="aspect-video bg-black rounded-xl overflow-hidden flex items-center justify-center">
+                <video id="videoElement" controls autoplay class="w-full h-full max-h-[70vh] object-contain"></video>
+            </div>
+            <div class="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 pt-2 border-t border-slate-800">
+                <div class="grid grid-cols-3 gap-2 flex-1">
+                    <a id="playerDlClean" href="#" download class="text-[11px] sm:text-xs text-white bg-emerald-600 hover:bg-emerald-500 py-2 px-2.5 rounded-lg flex items-center justify-center space-x-1 font-bold transition shadow-sm text-center active:scale-95" title="Tải video sạch gốc không logo">
+                        <i class="fa-solid fa-video"></i>
+                        <span>Video Sạch</span>
+                    </a>
+                    <a id="playerDlProcessed" href="#" download class="text-[11px] sm:text-xs text-white bg-purple-600 hover:bg-purple-500 py-2 px-2.5 rounded-lg flex items-center justify-center space-x-1 font-bold transition shadow-sm text-center active:scale-95" title="Tải video 9:16 đã lách bản quyền">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                        <span>Lách 9:16</span>
+                    </a>
+                    <a id="playerDlAudio" href="#" download class="text-[11px] sm:text-xs text-white bg-teal-600 hover:bg-teal-500 py-2 px-2.5 rounded-lg flex items-center justify-center space-x-1 font-bold transition shadow-sm text-center active:scale-95" title="Tách và tải file nhạc MP3 320k">
+                        <i class="fa-solid fa-music"></i>
+                        <span>Tải MP3</span>
+                    </a>
+                </div>
+                <div class="flex items-center justify-end space-x-2 pt-1 sm:pt-0">
+                    <button onclick="openCurrentVideoFolder()" class="hidden sm:flex text-xs text-slate-300 hover:text-white bg-slate-800 border border-slate-700 px-3 py-2 rounded-lg items-center space-x-1.5" title="Mở thư mục máy tính">
+                        <i class="fa-regular fa-folder-open text-amber-400"></i>
+                        <span>Mở thư mục</span>
+                    </button>
+                    <button onclick="closePlayerModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold">Đóng</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== MODAL: SETTINGS ==================== -->
+    <div id="settingsModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-gear text-emerald-400"></i>
+                    <h3 class="font-bold text-white text-base">Cài Đặt Hệ Thống</h3>
+                </div>
+                <button onclick="closeModal('settingsModal')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+
+            <div class="space-y-4 text-xs">
+                <!-- Anti Duplicate Option -->
+                <div class="flex items-center justify-between p-3 rounded-xl bg-slate-800/60 border border-slate-700">
+                    <div>
+                        <div class="font-semibold text-white">Lách Bản Quyền Tự Động (FFmpeg)</div>
+                        <div class="text-[11px] text-slate-400">Tự render video 9:16, đổi tốc độ 1.02x, xóa metadata</div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="settingAntiDup" class="sr-only peer">
+                        <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                    </label>
+                </div>
+
+                <!-- Blurred Background -->
+                <div class="flex items-center justify-between p-3 rounded-xl bg-slate-800/60 border border-slate-700">
+                    <div>
+                        <div class="font-semibold text-white">Nền Mờ Hai Bên (Blurred Background)</div>
+                        <div class="text-[11px] text-slate-400">Tạo hiệu ứng mờ nghệ thuật khi đưa video ngang về 9:16</div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="settingBlurBg" class="sr-only peer" checked>
+                        <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                    </label>
+                </div>
+
+                <!-- Max Concurrent Downloads -->
+                <div class="flex items-center justify-between p-3 rounded-xl bg-slate-800/60 border border-slate-700">
+                    <div>
+                        <div class="font-semibold text-white">Số Luồng Tải Song Song (Đa Luồng)</div>
+                        <div class="text-[11px] text-slate-400">Tải cùng lúc 1-10 video đồng thời (Mặc định: 4-5)</div>
+                    </div>
+                    <div class="flex items-center space-x-1.5">
+                        <input type="number" id="settingMaxWorkers" min="1" max="10" value="4" class="w-16 bg-slate-950 border border-slate-700 rounded-lg p-2 text-center text-white font-bold text-sm">
+                        <span class="text-xs text-slate-400">luồng</span>
+                    </div>
+                </div>
+
+                <!-- Hashtags -->
+                <div class="space-y-1">
+                    <label class="font-semibold text-white">Bộ Hashtag Mặc Định</label>
+                    <input type="text" id="settingHashtags" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white" value="#xuhuong #viral #reels #shorts">
+                </div>
+            </div>
+
+            <div class="flex justify-end space-x-2 pt-3 border-t border-slate-800">
+                <button onclick="closeModal('settingsModal')" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-semibold">Đóng</button>
+                <button onclick="saveSettings()" class="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold">Lưu Cài Đặt</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast Container -->
+    <div id="toastContainer" class="fixed bottom-5 right-5 z-50 space-y-2 pointer-events-none"></div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

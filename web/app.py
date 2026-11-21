@@ -1,0 +1,439 @@
+import os
+import re
+import time
+import json
+import asyncio
+from typing import List, Dict, Optional
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+
+from core.config import (
+    BASE_DIR,
+    DOWNLOADS_DIR,
+    VIDEOS_DIR,
+    AUDIOS_DIR,
+    PROCESSED_DIR,
+    open_folder_in_explorer,
+)
+from core.database import (
+    get_tasks,
+    get_task,
+    add_task,
+    delete_task,
+    update_task,
+    get_stats,
+    get_all_settings,
+    set_setting,
+    get_setting,
+)
+from core.processor import apply_anti_duplicate_filter, extract_audio_mp3
+from core.downloader import sanitize_filename
+from core.worker import task_worker
+from core.clipboard_watcher import clipboard_watcher
+
+app = FastAPI(title="PTH Media Pro", description="Hệ thống tải video đa năng không logo & lách bản quyền thông minh")
+
+# Thư mục web
+WEB_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(WEB_DIR, "static")
+TEMPLATES_DIR = os.path.join(WEB_DIR, "templates")
+
+if os.path.exists(STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+# Quản lý WebSocket kết nối từ UI hỗ trợ phân tách phiên người dùng độc lập
+class ConnectionManager:
+    def __init__(self):
+        # session_id -> list of active WebSockets
+        self.sessions: Dict[str, List[WebSocket]] = {}
+
+    async def connect(self, websocket: WebSocket, session_id: str = "default"):
+        await websocket.accept()
+        if session_id not in self.sessions:
+            self.sessions[session_id] = []
+        self.sessions[session_id].append(websocket)
+
+    def disconnect(self, websocket: WebSocket, session_id: str = "default"):
+        if session_id in self.sessions and websocket in self.sessions[session_id]:
+            self.sessions[session_id].remove(websocket)
+            if not self.sessions[session_id]:
+                del self.sessions[session_id]
+
+    async def broadcast(self, message: dict):
+        target_session = message.get("session_id") or (
+            message.get("data") and message["data"].get("session_id")
+        )
+        
+        # Nếu có session_id cụ thể, chỉ gửi cho các máy/thiết bị thuộc phiên đó
+        if target_session and target_session in self.sessions:
+            targets = [(ws, target_session) for ws in list(self.sessions[target_session])]
+        elif not target_session:
+            # Thông báo toàn cục (cài đặt hệ thống, trạng thái chung)
+            targets = [(ws, sid) for sid, conns in self.sessions.items() for ws in list(conns)]
+        else:
+            targets = []
+
+        for ws, sid in targets:
+            try:
+                await ws.send_json(message)
+            except Exception:
+                self.disconnect(ws, sid)
+
+
+ws_manager = ConnectionManager()
+loop_ref = None
+
+
+def broadcast_sync(msg: dict):
+    """Gửi thông điệp từ luồng nền (thread) sang WebSocket async"""
+    global loop_ref
+    if loop_ref and loop_ref.is_running():
+        asyncio.run_coroutine_threadsafe(ws_manager.broadcast(msg), loop_ref)
+
+
+# Đăng ký callback cho worker và clipboard watcher
+task_worker.broadcast_callback = broadcast_sync
+
+
+def on_clipboard_link(url: str, task_id: int):
+    broadcast_sync({
+        "event": "clipboard_detected",
+        "data": {"url": url, "id": task_id, "message": f"Đã bắt link từ Clipboard: {url[:50]}..."}
+    })
+
+
+clipboard_watcher.on_new_link = on_clipboard_link
+
+
+# ==================== CÁC SCHEMA REQUEST ====================
+class SingleTaskRequest(BaseModel):
+    url: str
+    format_type: Optional[str] = "video"  # video | audio | processed
+    session_id: Optional[str] = "default"
+
+
+class BatchTaskRequest(BaseModel):
+    urls: List[str]
+    format_type: Optional[str] = "video"
+    session_id: Optional[str] = "default"
+
+
+class SettingsRequest(BaseModel):
+    auto_clipboard: Optional[bool] = None
+    anti_duplicate: Optional[bool] = None
+    download_mode: Optional[str] = None
+    target_resolution: Optional[str] = None
+    speed_factor: Optional[float] = None
+    zoom_factor: Optional[float] = None
+    blur_background: Optional[bool] = None
+    watermark_enabled: Optional[bool] = None
+    watermark_position: Optional[str] = None
+    custom_hashtags: Optional[str] = None
+    max_concurrent_downloads: Optional[int] = None
+
+
+class OpenFolderRequest(BaseModel):
+    path: Optional[str] = None
+    type: Optional[str] = "all"  # all | videos | audios | processed
+
+
+# ==================== WEBSOCKET ====================
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket, session_id: Optional[str] = "default"):
+    global loop_ref
+    loop_ref = asyncio.get_running_loop()
+    sid = session_id or "default"
+    await ws_manager.connect(websocket, sid)
+    try:
+        while True:
+            # Nhận ping từ client để giữ kết nối
+            data = await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket, sid)
+    except Exception:
+        ws_manager.disconnect(websocket, sid)
+
+
+# ==================== API ENDPOINTS ====================
+@app.get("/", response_class=HTMLResponse)
+async def get_index():
+    index_file = os.path.join(TEMPLATES_DIR, "index.html")
+    if os.path.exists(index_file):
+        with open(index_file, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return HTMLResponse("<h1>PTH Media Pro - Đang tải giao diện...</h1>")
+
+
+@app.get("/api/tasks")
+async def api_get_tasks(limit: int = 50, status: Optional[str] = None, session_id: Optional[str] = None):
+    return {"tasks": get_tasks(limit=limit, status=status, session_id=session_id)}
+
+
+@app.post("/api/tasks")
+async def api_add_task(req: SingleTaskRequest):
+    text = req.url.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Vui lòng nhập đường dẫn URL")
+
+    sid = req.session_id or "default"
+
+    # Nhận diện thông minh: Cho phép dán đồng thời nhiều link cách nhau bởi khoảng trắng hoặc xuống dòng
+    urls = re.findall(r'https?://[^\s,;"\'<>]+', text)
+    if len(urls) > 1:
+        added_ids = []
+        for u in urls:
+            t_id = add_task(u, format_type=req.format_type, session_id=sid)
+            if t_id:
+                added_ids.append(t_id)
+        broadcast_sync({"event": "batch_added", "session_id": sid, "data": {"count": len(added_ids), "session_id": sid}})
+        return {"status": "success", "count": len(added_ids), "ids": added_ids}
+
+    # Nếu chỉ có 1 link
+    target_url = urls[0] if urls else text
+    task_id = add_task(target_url, format_type=req.format_type, session_id=sid)
+    if not task_id:
+        raise HTTPException(status_code=500, detail="Không thể tạo tác vụ tải")
+    broadcast_sync({"event": "task_added", "session_id": sid, "data": {"id": task_id, "url": target_url, "session_id": sid}})
+    return {"status": "success", "id": task_id}
+
+
+@app.post("/api/tasks/batch")
+async def api_add_batch(req: BatchTaskRequest):
+    sid = req.session_id or "default"
+    added_ids = []
+    for u in req.urls:
+        clean_u = u.strip()
+        if clean_u.startswith("http"):
+            t_id = add_task(clean_u, format_type=req.format_type, session_id=sid)
+            if t_id:
+                added_ids.append(t_id)
+    broadcast_sync({"event": "batch_added", "session_id": sid, "data": {"count": len(added_ids), "session_id": sid}})
+    return {"status": "success", "count": len(added_ids), "ids": added_ids}
+
+
+@app.delete("/api/tasks/{task_id}")
+async def api_delete_task(task_id: int, delete_file: bool = False):
+    task = get_task(task_id)
+    sid = task.get("session_id", "default") if task else "default"
+    success = delete_task(task_id, delete_file=delete_file)
+    if not success:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tác vụ")
+    broadcast_sync({"event": "task_deleted", "session_id": sid, "data": {"id": task_id, "session_id": sid}})
+    return {"status": "success"}
+
+
+@app.post("/api/tasks/{task_id}/retry")
+async def api_retry_task(task_id: int):
+    task = get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tác vụ")
+    sid = task.get("session_id", "default")
+    update_task(task_id, status="PENDING", retry_count=0, progress=0.0, speed="", error_log="")
+    broadcast_sync({"event": "task_retry", "session_id": sid, "data": {"id": task_id, "session_id": sid}})
+    return {"status": "success"}
+
+
+@app.post("/api/tasks/{task_id}/process")
+async def api_process_task(task_id: int, bg_tasks: BackgroundTasks):
+    task = get_task(task_id)
+    if not task or not task.get("raw_path") or not os.path.exists(task["raw_path"]):
+        raise HTTPException(status_code=400, detail="Tệp gốc không tồn tại để xử lý")
+    sid = task.get("session_id", "default")
+
+    def run_proc():
+        try:
+            update_task(task_id, status="PROCESSING", progress=30.0, speed="FFmpeg")
+            broadcast_sync({"event": "task_progress", "session_id": sid, "data": {"id": task_id, "session_id": sid, "status": "PROCESSING", "progress": 30.0}})
+            out_processed = os.path.join(PROCESSED_DIR, f"clean_{task_id}.mp4")
+            apply_anti_duplicate_filter(
+                input_path=task["raw_path"],
+                output_path=out_processed,
+                target_resolution=get_setting("target_resolution", "1080x1920"),
+                speed_factor=float(get_setting("speed_factor", 1.02)),
+                zoom_factor=float(get_setting("zoom_factor", 1.02)),
+                blur_background=bool(get_setting("blur_background", True))
+            )
+            update_task(task_id, final_path=out_processed, status="READY", progress=100.0, speed="Hoàn tất")
+            broadcast_sync({"event": "task_done", "session_id": sid, "data": {"id": task_id, "session_id": sid, "status": "READY", "final_path": out_processed}})
+        except Exception as e:
+            update_task(task_id, status="FAILED", error_log=str(e)[:200])
+            broadcast_sync({"event": "task_error", "session_id": sid, "data": {"id": task_id, "session_id": sid, "error": str(e)[:200]}})
+
+    bg_tasks.add_task(run_proc)
+    return {"status": "processing_started"}
+
+
+@app.post("/api/tasks/{task_id}/extract-audio")
+async def api_extract_audio(task_id: int, bg_tasks: BackgroundTasks):
+    task = get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tác vụ")
+    src_path = task.get("final_path") or task.get("raw_path")
+    if not src_path or not os.path.exists(src_path):
+        raise HTTPException(status_code=400, detail="Không tìm thấy tệp video để tách nhạc")
+    sid = task.get("session_id", "default")
+
+    def run_audio():
+        try:
+            update_task(task_id, speed="Tách MP3", progress=50.0)
+            out_mp3 = extract_audio_mp3(src_path)
+            update_task(task_id, final_path=out_mp3, format_type="audio", speed="Đã tách MP3", progress=100.0, status="DONE")
+            broadcast_sync({"event": "task_done", "session_id": sid, "data": {"id": task_id, "session_id": sid, "status": "DONE", "final_path": out_mp3}})
+        except Exception as e:
+            update_task(task_id, error_log=f"Lỗi tách MP3: {str(e)[:200]}")
+            broadcast_sync({"event": "task_error", "session_id": sid, "data": {"id": task_id, "session_id": sid, "error": str(e)[:200]}})
+
+    bg_tasks.add_task(run_audio)
+    return {"status": "audio_extracting_started"}
+
+
+@app.get("/api/download/{task_id}")
+async def api_download_file(task_id: int, type: Optional[str] = None):
+    """
+    Tải trực tiếp tệp về điện thoại hoặc máy tính cá nhân.
+    Hỗ trợ các tùy chọn linh hoạt cho người dùng điện thoại:
+    - type='clean' hoặc 'raw': Tải video gốc đã xóa sạch logo watermark
+    - type='processed': Tải video đã lách bản quyền 9:16 (tự động render nếu chưa có)
+    - type='audio': Tải file âm thanh MP3 320kbps (tự động trích xuất nếu chưa có)
+    - type=None: Tải bản hoàn chỉnh hiện có
+    """
+    task = get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tác vụ")
+
+    target_path = None
+    title = sanitize_filename(task.get("title") or f"video_{task_id}")
+
+    if type == "audio":
+        # Tìm file mp3 đã tách
+        mp3_path = os.path.join(AUDIOS_DIR, f"{title}_{task_id}.mp3")
+        clean_mp3 = os.path.join(AUDIOS_DIR, f"clean_{task_id}.mp3")
+
+        if os.path.exists(mp3_path):
+            target_path = mp3_path
+        elif os.path.exists(clean_mp3):
+            target_path = clean_mp3
+        elif task.get("final_path") and task["final_path"].endswith(".mp3") and os.path.exists(task["final_path"]):
+            target_path = task["final_path"]
+        else:
+            src_path = task.get("final_path") or task.get("raw_path")
+            if src_path and os.path.exists(src_path):
+                try:
+                    target_path = extract_audio_mp3(src_path, output_path=mp3_path)
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=f"Lỗi tách MP3: {str(e)[:150]}")
+            else:
+                raise HTTPException(status_code=404, detail="Không tìm thấy file nguồn để tách nhạc")
+
+    elif type == "processed":
+        # Video đã lách bản quyền 9:16
+        proc_path = os.path.join(PROCESSED_DIR, f"clean_{task_id}.mp4")
+        if os.path.exists(proc_path):
+            target_path = proc_path
+        elif task.get("final_path") and os.path.exists(task["final_path"]) and "clean_" in task["final_path"]:
+            target_path = task["final_path"]
+        else:
+            # Chưa lách, render nhanh
+            src_path = task.get("raw_path") or task.get("final_path")
+            if src_path and os.path.exists(src_path):
+                try:
+                    apply_anti_duplicate_filter(
+                        input_path=src_path,
+                        output_path=proc_path,
+                        target_resolution=get_setting("target_resolution", "1080x1920"),
+                        speed_factor=float(get_setting("speed_factor", 1.02)),
+                        zoom_factor=float(get_setting("zoom_factor", 1.02)),
+                        blur_background=bool(get_setting("blur_background", True))
+                    )
+                    update_task(task_id, final_path=proc_path, status="READY")
+                    target_path = proc_path
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=f"Lỗi lách bản quyền: {str(e)[:150]}")
+            else:
+                raise HTTPException(status_code=404, detail="Không tìm thấy file nguồn để xử lý")
+
+    elif type in ("clean", "raw"):
+        # Video sạch gốc không logo
+        target_path = task.get("raw_path") or task.get("final_path")
+    else:
+        # Mặc định lấy final_path hoặc raw_path
+        target_path = task.get("final_path") or task.get("raw_path")
+
+    if not target_path or not os.path.exists(target_path):
+        raise HTTPException(status_code=404, detail="Tệp không tồn tại trên hệ thống")
+
+    filename = os.path.basename(target_path)
+    return FileResponse(
+        path=target_path,
+        filename=filename,
+        media_type="application/octet-stream"
+    )
+
+
+@app.get("/api/stats")
+async def api_get_stats(session_id: Optional[str] = None):
+    return get_stats(session_id=session_id)
+
+
+@app.get("/api/tunnel")
+async def api_get_tunnel():
+    from core.tunnel import get_public_tunnel_url
+    return {"public_url": get_public_tunnel_url()}
+
+
+@app.get("/api/settings")
+async def api_get_settings():
+    return get_all_settings()
+
+
+@app.post("/api/settings")
+async def api_save_settings(req: SettingsRequest):
+    data = req.model_dump(exclude_unset=True)
+    for k, v in data.items():
+        if v is not None:
+            set_setting(k, v)
+    if "max_concurrent_downloads" in data:
+        try:
+            new_workers = int(data["max_concurrent_downloads"])
+            task_worker.stop()
+            time.sleep(0.5)
+            task_worker.start(num_workers=new_workers)
+        except Exception:
+            pass
+    broadcast_sync({"event": "settings_updated", "data": data})
+    return {"status": "success", "settings": get_all_settings()}
+
+
+@app.post("/api/login-session")
+async def api_trigger_login(bg_tasks: BackgroundTasks):
+    """Kích hoạt mở trình duyệt để người dùng đăng nhập tài khoản một lần"""
+    from core.reup_engine import run_login_session
+    bg_tasks.add_task(run_login_session)
+    return {"status": "success", "message": "Đang mở trình duyệt đăng nhập..."}
+
+
+@app.post("/api/open-folder")
+async def api_open_folder(req: OpenFolderRequest):
+    folder = DOWNLOADS_DIR
+    if req.type == "videos":
+        folder = VIDEOS_DIR
+    elif req.type == "audios":
+        folder = AUDIOS_DIR
+    elif req.type == "processed":
+        folder = PROCESSED_DIR
+    elif req.path:
+        folder = req.path
+
+    success = open_folder_in_explorer(folder)
+    return {"status": "success" if success else "error", "path": folder}
+
+
+@app.get("/media/preview")
+async def api_media_preview(path: str):
+    """Xem trước video hoặc audio trực tiếp trên trình duyệt"""
+    if not path or not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Tệp không tồn tại")
+    return FileResponse(path)

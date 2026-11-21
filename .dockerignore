@@ -1,0 +1,10 @@
+downloads/
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+bin/
+profiles/
+__pycache__/
+*.bat
+*.vbs

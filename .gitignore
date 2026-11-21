@@ -1,0 +1,13 @@
+# Binaries & Large files (Tải tự động trên Linux Cloud bằng Docker)
+bin/
+downloads/
+data/*.db*
+profiles/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.idea/
+.vscode/
+scratch/
