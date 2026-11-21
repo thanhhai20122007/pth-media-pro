@@ -32,6 +32,7 @@ def init_db():
                 progress REAL DEFAULT 0.0,
                 speed TEXT DEFAULT '',
                 format_type TEXT DEFAULT 'video',
+                quality TEXT DEFAULT '1080p',
                 session_id TEXT DEFAULT 'default',
                 retry_count INTEGER DEFAULT 0,
                 error_log TEXT,
@@ -40,9 +41,14 @@ def init_db():
             )
         """)
 
-        # Tự động nâng cấp cột session_id nếu đang dùng database cũ
+        # Tự động nâng cấp cột session_id & quality nếu đang dùng database cũ
         try:
             conn.execute("ALTER TABLE tasks ADD COLUMN session_id TEXT DEFAULT 'default'")
+        except Exception:
+            pass
+
+        try:
+            conn.execute("ALTER TABLE tasks ADD COLUMN quality TEXT DEFAULT '1080p'")
         except Exception:
             pass
 
@@ -61,23 +67,24 @@ def init_db():
             )
 
 
-def add_task(url: str, format_type: str = "video", title: str = None, session_id: str = "default") -> Optional[int]:
-    """Thêm một link vào danh sách chờ tải với phiên người dùng độc lập"""
+def add_task(url: str, format_type: str = "video", title: str = None, session_id: str = "default", quality: str = "1080p") -> Optional[int]:
+    """Thêm một link vào danh sách chờ tải với phiên người dùng độc lập và chất lượng video"""
     with get_db() as conn:
         try:
             cur = conn.execute(
                 """
-                INSERT INTO tasks (url, format_type, title, status, progress, retry_count, session_id)
-                VALUES (?, ?, ?, 'PENDING', 0.0, 0, ?)
+                INSERT INTO tasks (url, format_type, title, status, progress, retry_count, session_id, quality)
+                VALUES (?, ?, ?, 'PENDING', 0.0, 0, ?, ?)
                 ON CONFLICT(url) DO UPDATE SET
                     status = 'PENDING',
                     retry_count = 0,
                     error_log = NULL,
                     format_type = excluded.format_type,
                     session_id = excluded.session_id,
+                    quality = excluded.quality,
                     updated_at = CURRENT_TIMESTAMP
                 """,
-                (url.strip(), format_type, title, session_id or "default")
+                (url.strip(), format_type, title, session_id or "default", quality or "1080p")
             )
             return cur.lastrowid
         except Exception as e:

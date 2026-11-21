@@ -72,6 +72,7 @@ class TaskWorker:
             task_id = task["id"]
             url = task["url"]
             format_type = task.get("format_type", "video")
+            quality = task.get("quality", "1080p")
             session_id = task.get("session_id", "default")
 
             print(f"[Worker #{worker_id}] Bắt đầu tải Task #{task_id}: {url[:60]}")
@@ -89,7 +90,7 @@ class TaskWorker:
                         "status": "DOWNLOADING"
                     })
 
-                dl_info = download_video_smart(url, task_id, format_type, progress_callback=prog_cb)
+                dl_info = download_video_smart(url, task_id, format_type, quality=quality, progress_callback=prog_cb)
                 if not dl_info or not isinstance(dl_info, dict):
                     raise Exception("Không thể lấy thông tin tệp tải về từ máy chủ")
 

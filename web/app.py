@@ -29,8 +29,8 @@ from core.database import (
     set_setting,
     get_setting,
 )
-from core.processor import apply_anti_duplicate_filter, extract_audio_mp3
-from core.downloader import sanitize_filename
+from core.processor import apply_anti_duplicate_filter, extract_audio_mp3, compress_video
+from core.downloader import sanitize_filename, extract_playlist_or_channel
 from core.worker import task_worker
 from core.clipboard_watcher import clipboard_watcher
 
@@ -113,12 +113,22 @@ clipboard_watcher.on_new_link = on_clipboard_link
 class SingleTaskRequest(BaseModel):
     url: str
     format_type: Optional[str] = "video"  # video | audio | processed
+    quality: Optional[str] = "1080p"      # 720p | 1080p | 4k | audio
     session_id: Optional[str] = "default"
 
 
 class BatchTaskRequest(BaseModel):
     urls: List[str]
     format_type: Optional[str] = "video"
+    quality: Optional[str] = "1080p"
+    session_id: Optional[str] = "default"
+
+
+class PlaylistExtractRequest(BaseModel):
+    url: str
+    max_items: Optional[int] = 30
+    format_type: Optional[str] = "video"
+    quality: Optional[str] = "1080p"
     session_id: Optional[str] = "default"
 
 
@@ -180,13 +190,14 @@ async def api_add_task(req: SingleTaskRequest):
         raise HTTPException(status_code=400, detail="Vui lòng nhập đường dẫn URL")
 
     sid = req.session_id or "default"
+    quality = req.quality or "1080p"
 
     # Nhận diện thông minh: Cho phép dán đồng thời nhiều link cách nhau bởi khoảng trắng hoặc xuống dòng
     urls = re.findall(r'https?://[^\s,;"\'<>]+', text)
     if len(urls) > 1:
         added_ids = []
         for u in urls:
-            t_id = add_task(u, format_type=req.format_type, session_id=sid)
+            t_id = add_task(u, format_type=req.format_type, session_id=sid, quality=quality)
             if t_id:
                 added_ids.append(t_id)
         broadcast_sync({"event": "batch_added", "session_id": sid, "data": {"count": len(added_ids), "session_id": sid}})
@@ -194,7 +205,7 @@ async def api_add_task(req: SingleTaskRequest):
 
     # Nếu chỉ có 1 link
     target_url = urls[0] if urls else text
-    task_id = add_task(target_url, format_type=req.format_type, session_id=sid)
+    task_id = add_task(target_url, format_type=req.format_type, session_id=sid, quality=quality)
     if not task_id:
         raise HTTPException(status_code=500, detail="Không thể tạo tác vụ tải")
     broadcast_sync({"event": "task_added", "session_id": sid, "data": {"id": task_id, "url": target_url, "session_id": sid}})
@@ -204,15 +215,55 @@ async def api_add_task(req: SingleTaskRequest):
 @app.post("/api/tasks/batch")
 async def api_add_batch(req: BatchTaskRequest):
     sid = req.session_id or "default"
+    quality = req.quality or "1080p"
     added_ids = []
     for u in req.urls:
         clean_u = u.strip()
         if clean_u.startswith("http"):
-            t_id = add_task(clean_u, format_type=req.format_type, session_id=sid)
+            t_id = add_task(clean_u, format_type=req.format_type, session_id=sid, quality=quality)
             if t_id:
                 added_ids.append(t_id)
     broadcast_sync({"event": "batch_added", "session_id": sid, "data": {"count": len(added_ids), "session_id": sid}})
     return {"status": "success", "count": len(added_ids), "ids": added_ids}
+
+
+@app.post("/api/playlist/extract")
+async def api_extract_playlist(req: PlaylistExtractRequest):
+    """
+    Bóc tách và tải hàng loạt video từ kênh hoặc playlist
+    """
+    url = req.url.strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="Vui lòng cung cấp URL kênh hoặc playlist")
+    sid = req.session_id or "default"
+    quality = req.quality or "1080p"
+
+    try:
+        data = extract_playlist_or_channel(url, max_items=req.max_items or 30)
+        videos = data.get("videos", [])
+        added_ids = []
+        for v in videos:
+            t_id = add_task(
+                url=v["url"],
+                format_type=req.format_type or "video",
+                title=v.get("title"),
+                session_id=sid,
+                quality=quality
+            )
+            if t_id:
+                added_ids.append(t_id)
+
+        broadcast_sync({"event": "batch_added", "session_id": sid, "data": {"count": len(added_ids), "session_id": sid}})
+        return {
+            "status": "success",
+            "title": data.get("title"),
+            "uploader": data.get("uploader"),
+            "total_found": data.get("count"),
+            "added_count": len(added_ids),
+            "ids": added_ids
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi bóc tách kênh/playlist: {str(e)[:200]}")
 
 
 @app.delete("/api/tasks/{task_id}")
@@ -291,6 +342,32 @@ async def api_extract_audio(task_id: int, bg_tasks: BackgroundTasks):
     return {"status": "audio_extracting_started"}
 
 
+@app.post("/api/tasks/{task_id}/compress")
+async def api_compress_task(task_id: int, bg_tasks: BackgroundTasks):
+    task = get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tác vụ")
+    src_path = task.get("raw_path") or task.get("final_path")
+    if not src_path or not os.path.exists(src_path):
+        raise HTTPException(status_code=400, detail="Tệp gốc không tồn tại để nén")
+    sid = task.get("session_id", "default")
+
+    def run_comp():
+        try:
+            update_task(task_id, speed="Đang nén", progress=50.0)
+            comp_path = os.path.join(PROCESSED_DIR, f"compressed_{task_id}.mp4")
+            compress_video(src_path, output_path=comp_path)
+            update_task(task_id, speed="Đã nén", progress=100.0)
+            broadcast_sync({"event": "task_done", "session_id": sid, "data": {"id": task_id, "session_id": sid, "status": "DONE", "final_path": comp_path}})
+        except Exception as e:
+            update_task(task_id, error_log=f"Lỗi nén: {str(e)[:150]}")
+            broadcast_sync({"event": "task_error", "session_id": sid, "data": {"id": task_id, "session_id": sid, "error": str(e)[:150]}})
+
+    bg_tasks.add_task(run_comp)
+    return {"status": "compressing_started"}
+
+
+
 @app.get("/api/download/{task_id}")
 async def api_download_file(task_id: int, type: Optional[str] = None):
     """
@@ -355,6 +432,21 @@ async def api_download_file(task_id: int, type: Optional[str] = None):
                     raise HTTPException(status_code=500, detail=f"Lỗi lách bản quyền: {str(e)[:150]}")
             else:
                 raise HTTPException(status_code=404, detail="Không tìm thấy file nguồn để xử lý")
+
+    elif type == "compressed":
+        # Video nén siêu nhẹ tối ưu di động / Zalo
+        comp_path = os.path.join(PROCESSED_DIR, f"compressed_{task_id}.mp4")
+        if os.path.exists(comp_path):
+            target_path = comp_path
+        else:
+            src_path = task.get("raw_path") or task.get("final_path")
+            if src_path and os.path.exists(src_path):
+                try:
+                    target_path = compress_video(src_path, output_path=comp_path)
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=f"Lỗi nén video: {str(e)[:150]}")
+            else:
+                raise HTTPException(status_code=404, detail="Không tìm thấy file nguồn để nén")
 
     elif type in ("clean", "raw"):
         # Video sạch gốc không logo

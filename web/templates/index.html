@@ -180,15 +180,28 @@
                             </label>
                         </div>
 
-                        <!-- Batch Button -->
-                        <button 
-                            type="button" 
-                            onclick="openModal('batchModal')" 
-                            class="text-xs text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700 border border-slate-700 px-3 py-1.5 rounded-lg font-medium transition flex items-center space-x-1.5"
-                        >
-                            <i class="fa-solid fa-list-check text-cyan-400"></i>
-                            <span>Tải Hàng Loạt (Nhiều Link)</span>
-                        </button>
+                        <!-- Quality Selector + Batch & Playlist Actions -->
+                        <div class="flex flex-wrap items-center gap-2">
+                            <!-- Quality Dropdown -->
+                            <div class="flex items-center space-x-1.5 bg-slate-900/80 border border-slate-700 px-2.5 py-1.5 rounded-lg text-xs" title="Chất lượng tải về">
+                                <i class="fa-solid fa-sliders text-emerald-400"></i>
+                                <select id="qualitySelect" class="bg-transparent text-white font-semibold focus:outline-none cursor-pointer">
+                                    <option value="1080p" class="bg-slate-900 text-white" selected>1080p Full HD (Chuẩn)</option>
+                                    <option value="720p" class="bg-slate-900 text-white">720p HD (Siêu Tốc / Nhẹ 4G)</option>
+                                    <option value="4k" class="bg-slate-900 text-white">2K / 4K Ultra HD (Nét Tối Đa)</option>
+                                </select>
+                            </div>
+
+                            <!-- Batch Button -->
+                            <button 
+                                type="button" 
+                                onclick="openModal('batchModal')" 
+                                class="text-xs text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700 border border-slate-700 px-3 py-1.5 rounded-lg font-medium transition flex items-center space-x-1.5"
+                            >
+                                <i class="fa-solid fa-layer-group text-cyan-400"></i>
+                                <span>Tải Hàng Loạt / Playlist</span>
+                            </button>
+                        </div>
                     </div>
                 </form>
 
@@ -282,37 +295,104 @@
         <p>PTH Media Pro • Tải video đa năng không watermark • Hỗ trợ FFmpeg Hardware Acceleration</p>
     </footer>
 
-    <!-- ==================== MODAL: BATCH DOWNLOAD ==================== -->
+    <!-- ==================== MODAL: BATCH & PLAYLIST DOWNLOAD ==================== -->
     <div id="batchModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
         <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                 <div class="flex items-center space-x-2">
-                    <i class="fa-solid fa-list-check text-emerald-400 text-lg"></i>
-                    <h3 class="font-bold text-white text-base">Tải Video Hàng Loạt Song Song</h3>
+                    <i class="fa-solid fa-layer-group text-emerald-400 text-lg"></i>
+                    <h3 class="font-bold text-white text-base">Tải Hàng Loạt & Bóc Tách Playlist</h3>
                 </div>
                 <button onclick="closeModal('batchModal')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
             </div>
-            <div class="flex items-center justify-between text-xs">
-                <span class="text-slate-400">Dán danh sách các link (mỗi dòng một link hoặc cách nhau bằng dấu cách):</span>
-                <button type="button" onclick="pasteAllFromClipboardToBatch()" class="text-emerald-400 hover:text-emerald-300 font-semibold flex items-center space-x-1">
-                    <i class="fa-regular fa-paste"></i>
-                    <span>Dán Clipboard</span>
+
+            <!-- Tabs Selection -->
+            <div class="flex items-center space-x-2 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-semibold">
+                <button type="button" id="tabBatchLinksBtn" onclick="switchBatchTab('links')" class="flex-1 py-2 rounded-lg bg-slate-800 text-emerald-400 shadow transition flex items-center justify-center space-x-1.5">
+                    <i class="fa-solid fa-list-check"></i>
+                    <span>Dán Nhiều Link</span>
+                </button>
+                <button type="button" id="tabBatchPlaylistBtn" onclick="switchBatchTab('playlist')" class="flex-1 py-2 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center space-x-1.5">
+                    <i class="fa-solid fa-clapperboard"></i>
+                    <span>Tải Cả Kênh / Playlist</span>
                 </button>
             </div>
-            <textarea id="batchUrls" oninput="updateBatchCounter()" rows="7" placeholder="https://www.tiktok.com/@user/video/123&#10;https://www.youtube.com/shorts/xyz&#10;https://www.facebook.com/reel/456&#10;https://www.threads.com/share/789" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white text-xs placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"></textarea>
-            
-            <div class="flex items-center justify-between">
-                <div class="flex items-center space-x-2">
-                    <select id="batchFormat" class="bg-slate-800 border border-slate-700 text-xs text-white rounded-lg px-3 py-2">
-                        <option value="video">Video Sạch (Không Logo)</option>
-                        <option value="audio">Chỉ Tách MP3</option>
-                        <option value="processed">Lách Bản Quyền 9:16 (FFmpeg)</option>
-                    </select>
-                    <span id="batchCountBadge" class="text-xs text-emerald-400 font-medium">0 link</span>
+
+            <!-- Tab 1: Dán Nhiều Link -->
+            <div id="batchTabLinks" class="space-y-3">
+                <div class="flex items-center justify-between text-xs">
+                    <span class="text-slate-400">Dán danh sách các link (mỗi dòng một link hoặc cách nhau bằng dấu cách):</span>
+                    <button type="button" onclick="pasteAllFromClipboardToBatch()" class="text-emerald-400 hover:text-emerald-300 font-semibold flex items-center space-x-1">
+                        <i class="fa-regular fa-paste"></i>
+                        <span>Dán Clipboard</span>
+                    </button>
                 </div>
-                <div class="flex space-x-2">
+                <textarea id="batchUrls" oninput="updateBatchCounter()" rows="6" placeholder="https://www.tiktok.com/@user/video/123&#10;https://www.youtube.com/shorts/xyz&#10;https://www.facebook.com/reel/456&#10;https://www.threads.com/share/789" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white text-xs placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"></textarea>
+                
+                <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
+                    <div class="flex items-center space-x-2">
+                        <select id="batchFormat" class="bg-slate-800 border border-slate-700 text-xs text-white rounded-lg px-2.5 py-1.5">
+                            <option value="video">Video Sạch (Không Logo)</option>
+                            <option value="audio">Chỉ Tách MP3</option>
+                            <option value="processed">Lách Bản Quyền 9:16 (FFmpeg)</option>
+                        </select>
+                        <select id="batchQuality" class="bg-slate-800 border border-slate-700 text-xs text-white rounded-lg px-2.5 py-1.5">
+                            <option value="1080p">1080p Full HD</option>
+                            <option value="720p">720p Siêu Tốc</option>
+                            <option value="4k">4K Ultra HD</option>
+                        </select>
+                        <span id="batchCountBadge" class="text-xs text-emerald-400 font-medium">0 link</span>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button onclick="closeModal('batchModal')" class="px-3.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-semibold">Hủy</button>
+                        <button onclick="submitBatchDownload()" class="px-4 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold shadow-md shadow-emerald-500/20">Tải Song Song</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 2: Tải Cả Kênh / Playlist -->
+            <div id="batchTabPlaylist" class="space-y-3 hidden">
+                <div class="text-xs text-slate-400">
+                    Nhập link Kênh YouTube (<code>/@channel/videos</code>), Playlist YouTube (<code>playlist?list=...</code>), hoặc Kênh TikTok (<code>/@user</code>):
+                </div>
+                <div class="relative">
+                    <input type="text" id="playlistUrlInput" placeholder="Ví dụ: https://www.youtube.com/@Google/videos" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white text-xs placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500 font-mono">
+                </div>
+
+                <div class="grid grid-cols-3 gap-2">
+                    <div>
+                        <label class="text-[11px] text-slate-400 block mb-1">Số lượng video:</label>
+                        <select id="playlistMaxItems" class="w-full bg-slate-800 border border-slate-700 text-xs text-white rounded-lg p-2 font-medium">
+                            <option value="10">10 video mới nhất</option>
+                            <option value="20" selected>20 video mới nhất</option>
+                            <option value="30">30 video mới nhất</option>
+                            <option value="50">50 video mới nhất</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[11px] text-slate-400 block mb-1">Định dạng:</label>
+                        <select id="playlistFormat" class="w-full bg-slate-800 border border-slate-700 text-xs text-white rounded-lg p-2 font-medium">
+                            <option value="video">Video Sạch</option>
+                            <option value="audio">Chỉ Lấy MP3</option>
+                            <option value="processed">Lách 9:16 FFmpeg</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[11px] text-slate-400 block mb-1">Độ phân giải:</label>
+                        <select id="playlistQuality" class="w-full bg-slate-800 border border-slate-700 text-xs text-white rounded-lg p-2 font-medium">
+                            <option value="1080p">1080p Full HD</option>
+                            <option value="720p">720p Siêu Tốc</option>
+                            <option value="4k">4K Ultra HD</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="flex justify-end space-x-2 pt-2 border-t border-slate-800">
                     <button onclick="closeModal('batchModal')" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-semibold">Hủy</button>
-                    <button onclick="submitBatchDownload()" class="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold shadow-md shadow-emerald-500/20">Tải Tất Cả Cùng Lúc</button>
+                    <button id="btnPlaylistExtract" onclick="submitPlaylistDownload()" class="px-5 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white text-xs font-bold shadow-md shadow-cyan-500/20 flex items-center space-x-1.5">
+                        <i class="fa-solid fa-cloud-arrow-down"></i>
+                        <span>Bóc Tách & Tải Toàn Bộ Kênh</span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -355,16 +435,20 @@
                 <video id="videoElement" controls playsinline webkit-playsinline preload="auto" class="w-full h-full max-h-[70vh] object-contain"></video>
             </div>
             <div class="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 pt-2 border-t border-slate-800">
-                <div class="grid grid-cols-3 gap-2 flex-1">
-                    <a id="playerDlClean" href="#" download class="text-[11px] sm:text-xs text-white bg-emerald-600 hover:bg-emerald-500 py-2 px-2.5 rounded-lg flex items-center justify-center space-x-1 font-bold transition shadow-sm text-center active:scale-95" title="Tải video sạch gốc không logo">
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 flex-1">
+                    <a id="playerDlClean" href="#" download class="text-[11px] sm:text-xs text-white bg-emerald-600 hover:bg-emerald-500 py-2 px-2 rounded-lg flex items-center justify-center space-x-1 font-bold transition shadow-sm text-center active:scale-95" title="Tải video sạch gốc không logo">
                         <i class="fa-solid fa-video"></i>
                         <span>Video Sạch</span>
                     </a>
-                    <a id="playerDlProcessed" href="#" download class="text-[11px] sm:text-xs text-white bg-purple-600 hover:bg-purple-500 py-2 px-2.5 rounded-lg flex items-center justify-center space-x-1 font-bold transition shadow-sm text-center active:scale-95" title="Tải video 9:16 đã lách bản quyền">
+                    <a id="playerDlProcessed" href="#" download class="text-[11px] sm:text-xs text-white bg-purple-600 hover:bg-purple-500 py-2 px-2 rounded-lg flex items-center justify-center space-x-1 font-bold transition shadow-sm text-center active:scale-95" title="Tải video 9:16 đã lách bản quyền">
                         <i class="fa-solid fa-wand-magic-sparkles"></i>
                         <span>Lách 9:16</span>
                     </a>
-                    <a id="playerDlAudio" href="#" download class="text-[11px] sm:text-xs text-white bg-teal-600 hover:bg-teal-500 py-2 px-2.5 rounded-lg flex items-center justify-center space-x-1 font-bold transition shadow-sm text-center active:scale-95" title="Tách và tải file nhạc MP3 320k">
+                    <a id="playerDlCompressed" href="#" download class="text-[11px] sm:text-xs text-white bg-amber-600 hover:bg-amber-500 py-2 px-2 rounded-lg flex items-center justify-center space-x-1 font-bold transition shadow-sm text-center active:scale-95" title="Nén siêu nhẹ giảm 60-70% dung lượng gửi Zalo/Telegram">
+                        <i class="fa-solid fa-file-zipper"></i>
+                        <span>Nén Gọn</span>
+                    </a>
+                    <a id="playerDlAudio" href="#" download class="text-[11px] sm:text-xs text-white bg-teal-600 hover:bg-teal-500 py-2 px-2 rounded-lg flex items-center justify-center space-x-1 font-bold transition shadow-sm text-center active:scale-95" title="Tách và tải file nhạc MP3 320k">
                         <i class="fa-solid fa-music"></i>
                         <span>Tải MP3</span>
                     </a>

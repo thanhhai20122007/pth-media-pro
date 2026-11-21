@@ -237,6 +237,7 @@ def download_with_ytdlp_engine(
     task_id: int,
     platform: str,
     format_type: str = "video",
+    quality: str = "1080p",
     progress_callback: Optional[Callable[[float, str], None]] = None,
 ) -> Dict[str, Any]:
     """
@@ -309,7 +310,7 @@ def download_with_ytdlp_engine(
     except Exception:
         pass
 
-    if format_type == "audio":
+    if format_type == "audio" or quality == "audio":
         ydl_opts.update({
             "format": "bestaudio/best",
             "postprocessors": [
@@ -322,15 +323,33 @@ def download_with_ytdlp_engine(
             ],
         })
     else:
-        # Chuẩn hóa độ phân giải: Giới hạn tối đa 1080p Full HD để tải nhanh tức thì trên cả video dài lẫn ngắn
-        if platform == "tiktok":
-            ydl_opts["format"] = "bestvideo[format_note!=watermarked]+bestaudio/best[format_note!=watermarked]/best"
-        elif platform == "youtube":
-            ydl_opts["format"] = "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best"
-        elif platform == "facebook":
-            ydl_opts["format"] = "best[height<=1080]/bestvideo[height<=1080]+bestaudio/best"
+        # Cấu hình chất lượng linh hoạt: 720p (siêu tốc cho 4G), 1080p (Full HD), 4k (gốc cao nhất)
+        if quality == "720p":
+            if platform == "tiktok":
+                ydl_opts["format"] = "bestvideo[height<=720][format_note!=watermarked]+bestaudio/best[height<=720][format_note!=watermarked]/best[height<=720]/best"
+            elif platform == "youtube":
+                ydl_opts["format"] = "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720]/best"
+            elif platform == "facebook":
+                ydl_opts["format"] = "best[height<=720]/bestvideo[height<=720]+bestaudio/best"
+            else:
+                ydl_opts["format"] = "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]/best"
+        elif quality in ("4k", "2k", "best"):
+            if platform == "tiktok":
+                ydl_opts["format"] = "bestvideo[format_note!=watermarked]+bestaudio/best[format_note!=watermarked]/best"
+            elif platform == "youtube":
+                ydl_opts["format"] = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
+            else:
+                ydl_opts["format"] = "bestvideo+bestaudio/best"
         else:
-            ydl_opts["format"] = "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]/best"
+            # Mặc định 1080p Full HD
+            if platform == "tiktok":
+                ydl_opts["format"] = "bestvideo[format_note!=watermarked]+bestaudio/best[format_note!=watermarked]/best"
+            elif platform == "youtube":
+                ydl_opts["format"] = "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best"
+            elif platform == "facebook":
+                ydl_opts["format"] = "best[height<=1080]/bestvideo[height<=1080]+bestaudio/best"
+            else:
+                ydl_opts["format"] = "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]/best"
         ydl_opts["merge_output_format"] = "mp4"
 
     # Kiểm tra nếu có cookie file trong profiles/browser_data hoặc data/
@@ -347,7 +366,12 @@ def download_with_ytdlp_engine(
         # Loại bỏ external_downloader và hạ cấp sang định dạng tương thích cao nhất
         ydl_opts.pop("external_downloader", None)
         ydl_opts.pop("external_downloader_args", None)
-        ydl_opts["format"] = "best[height<=1080]/best[height<=720]/best"
+        if quality == "720p":
+            ydl_opts["format"] = "best[height<=720]/best"
+        elif quality in ("4k", "2k", "best"):
+            ydl_opts["format"] = "best"
+        else:
+            ydl_opts["format"] = "best[height<=1080]/best[height<=720]/best"
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
 
@@ -501,6 +525,7 @@ def download_video_smart(
     url: str,
     task_id: int,
     format_type: str = "video",
+    quality: str = "1080p",
     progress_callback: Optional[Callable[[float, str], None]] = None,
 ) -> Dict[str, Any]:
     """
@@ -513,7 +538,7 @@ def download_video_smart(
     cleaned_url = resolve_redirect_url(cleaned_url)
     platform = detect_platform(cleaned_url)
 
-    print(f"[SmartDownloader] Bắt đầu tải Task #{task_id} | Platform: {platform} | URL: {cleaned_url}")
+    print(f"[SmartDownloader] Bắt đầu tải Task #{task_id} | Platform: {platform} | Quality: {quality} | URL: {cleaned_url}")
 
     # 1. NỀN TẢNG THREADS: Ưu tiên Engine chuyên dụng vượt chặn HTTP 429
     if platform == "threads":
@@ -543,6 +568,7 @@ def download_video_smart(
             task_id=task_id,
             platform=platform,
             format_type=format_type,
+            quality=quality,
             progress_callback=progress_callback,
         )
     except Exception as ytdl_err:
@@ -566,3 +592,84 @@ def download_video_smart(
                 raise Exception(f"Lỗi tải: {b_err[:150]}")
 
         raise ytdl_err
+
+
+def extract_playlist_or_channel(url: str, max_items: int = 30) -> Dict[str, Any]:
+    """
+    BÓC TÁCH TOÀN BỘ KÊNH HOẶC PLAYLIST HÀNG LOẠT:
+    - Bóc tách danh sách video từ Playlist YouTube, Kênh YouTube (@channel/videos), Kênh TikTok (@user), Douyin...
+    - Trả về tiêu đề, số lượng và danh sách link video để đưa vào hàng đợi tải đa luồng song song
+    """
+    cleaned_url = url.strip()
+    cleaned_url = resolve_redirect_url(cleaned_url)
+
+    ydl_opts = {
+        "extract_flat": True,
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "playlistend": max_items,
+        "socket_timeout": 30,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "web"],
+                "player_skip": ["configs", "webpage"]
+            }
+        }
+    }
+
+    try:
+        ydl_opts["impersonate"] = ImpersonateTarget.from_str("chrome")
+    except Exception:
+        pass
+
+    cookie_file = os.path.join(os.path.dirname(RAW_DIR), "cookies.txt")
+    if os.path.exists(cookie_file):
+        ydl_opts["cookiefile"] = cookie_file
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(cleaned_url, download=False)
+        if not info:
+            raise Exception("Không thể lấy danh sách video từ liên kết này")
+
+        entries = info.get("entries")
+        playlist_title = info.get("title") or "Danh sách video"
+        uploader = info.get("uploader") or info.get("channel") or ""
+
+        videos = []
+        if entries is not None:
+            for item in list(entries)[:max_items]:
+                if not item:
+                    continue
+                v_url = item.get("url") or item.get("webpage_url")
+                if not v_url and item.get("id"):
+                    v_url = f"https://www.youtube.com/watch?v={item['id']}"
+                elif v_url and not v_url.startswith("http"):
+                    v_url = f"https://www.youtube.com/watch?v={v_url}"
+
+                if v_url:
+                    v_title = item.get("title") or "Video"
+                    v_thumb = item.get("thumbnail") or ""
+                    v_duration = item.get("duration") or 0
+                    videos.append({
+                        "url": v_url,
+                        "title": v_title,
+                        "thumbnail": v_thumb,
+                        "duration": v_duration
+                    })
+        else:
+            # Liên kết chỉ là 1 video đơn lẻ
+            videos.append({
+                "url": cleaned_url,
+                "title": playlist_title,
+                "thumbnail": info.get("thumbnail") or "",
+                "duration": info.get("duration") or 0
+            })
+
+        return {
+            "title": playlist_title,
+            "uploader": uploader,
+            "count": len(videos),
+            "videos": videos
+        }
+

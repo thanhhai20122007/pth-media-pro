@@ -332,22 +332,27 @@ function renderTasks() {
                     </div>
                 </div>
 
-                <!-- Bottom Row: 3 Nút Tải Rõ Ràng Cho Điện Thoại & Máy Tính -->
+                <!-- Bottom Row: 4 Nút Tải Rõ Ràng Cho Điện Thoại & Máy Tính -->
                 ${isDone && finalFile ? `
                     <div class="pt-2.5 border-t border-slate-800/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
-                        <!-- 3 Nút Tải Trực Tiếp Chuẩn Mobile -->
-                        <div class="grid grid-cols-3 gap-1.5 sm:flex sm:items-center sm:space-x-2 flex-1">
-                            <a href="/api/download/${task.id}?type=clean" download class="py-2 px-2.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 hover:text-emerald-300 text-[11px] sm:text-xs font-bold transition flex items-center justify-center space-x-1 border border-emerald-500/30 text-center active:scale-95" title="Tải video sạch gốc không logo">
+                        <!-- 4 Nút Tải Trực Tiếp Chuẩn Mobile -->
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5 flex-1">
+                            <a href="/api/download/${task.id}?type=clean" download class="py-2 px-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 hover:text-emerald-300 text-[11px] sm:text-xs font-bold transition flex items-center justify-center space-x-1 border border-emerald-500/30 text-center active:scale-95" title="Tải video sạch gốc không logo">
                                 <i class="fa-solid fa-video"></i>
                                 <span>Video Sạch</span>
                             </a>
 
-                            <a href="/api/download/${task.id}?type=processed" download class="py-2 px-2.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 hover:text-purple-300 text-[11px] sm:text-xs font-bold transition flex items-center justify-center space-x-1 border border-purple-500/30 text-center active:scale-95" title="Tải video 9:16 đã lách bản quyền">
+                            <a href="/api/download/${task.id}?type=processed" download class="py-2 px-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 hover:text-purple-300 text-[11px] sm:text-xs font-bold transition flex items-center justify-center space-x-1 border border-purple-500/30 text-center active:scale-95" title="Tải video 9:16 đã lách bản quyền">
                                 <i class="fa-solid fa-wand-magic-sparkles"></i>
                                 <span>Lách 9:16</span>
                             </a>
 
-                            <a href="/api/download/${task.id}?type=audio" download class="py-2 px-2.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 hover:text-cyan-300 text-[11px] sm:text-xs font-bold transition flex items-center justify-center space-x-1 border border-cyan-500/30 text-center active:scale-95" title="Tách và tải âm thanh MP3 320k">
+                            <a href="/api/download/${task.id}?type=compressed" download class="py-2 px-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 hover:text-amber-300 text-[11px] sm:text-xs font-bold transition flex items-center justify-center space-x-1 border border-amber-500/30 text-center active:scale-95" title="Nén siêu nhẹ giảm 60-70% dung lượng gửi Zalo/Telegram">
+                                <i class="fa-solid fa-file-zipper"></i>
+                                <span>Nén Gọn</span>
+                            </a>
+
+                            <a href="/api/download/${task.id}?type=audio" download class="py-2 px-2 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 hover:text-cyan-300 text-[11px] sm:text-xs font-bold transition flex items-center justify-center space-x-1 border border-cyan-500/30 text-center active:scale-95" title="Tách và tải âm thanh MP3 320k">
                                 <i class="fa-solid fa-music"></i>
                                 <span>Tải MP3</span>
                             </a>
@@ -392,6 +397,7 @@ async function handleDownloadSubmit(e) {
     if (!url) return;
 
     const mode = document.querySelector('input[name="downloadMode"]:checked')?.value || 'video';
+    const quality = document.getElementById('qualitySelect')?.value || '1080p';
     const btn = document.getElementById('btnSubmit');
 
     btn.disabled = true;
@@ -401,7 +407,7 @@ async function handleDownloadSubmit(e) {
         const res = await fetch('/api/tasks', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: url, format_type: mode, session_id: getSessionId() })
+            body: JSON.stringify({ url: url, format_type: mode, quality: quality, session_id: getSessionId() })
         });
         const data = await res.json();
         if (res.ok) {
@@ -473,12 +479,13 @@ async function submitBatchDownload() {
     }
 
     const mode = document.getElementById('batchFormat').value;
+    const quality = document.getElementById('batchQuality')?.value || '1080p';
 
     try {
         const res = await fetch('/api/tasks/batch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ urls: urls, format_type: mode, session_id: getSessionId() })
+            body: JSON.stringify({ urls: urls, format_type: mode, quality: quality, session_id: getSessionId() })
         });
         const data = await res.json();
         showToast(`⚡ Đã nạp ${data.count} link vào hệ thống tải song song!`, 'success');
@@ -489,6 +496,87 @@ async function submitBatchDownload() {
         loadStats();
     } catch (e) {
         showToast('Lỗi khi nạp danh sách link', 'error');
+    }
+}
+
+// Chuyển đổi tab trong Modal Tải Hàng Loạt & Playlist
+function switchBatchTab(tab) {
+    const linksDiv = document.getElementById('batchTabLinks');
+    const playlistDiv = document.getElementById('batchTabPlaylist');
+    const linksBtn = document.getElementById('tabBatchLinksBtn');
+    const playlistBtn = document.getElementById('tabBatchPlaylistBtn');
+
+    if (tab === 'playlist') {
+        if (linksDiv) linksDiv.classList.add('hidden');
+        if (playlistDiv) playlistDiv.classList.remove('hidden');
+        if (linksBtn) {
+            linksBtn.className = 'flex-1 py-2 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center space-x-1.5';
+        }
+        if (playlistBtn) {
+            playlistBtn.className = 'flex-1 py-2 rounded-lg bg-slate-800 text-cyan-400 shadow transition flex items-center justify-center space-x-1.5';
+        }
+    } else {
+        if (playlistDiv) playlistDiv.classList.add('hidden');
+        if (linksDiv) linksDiv.classList.remove('hidden');
+        if (playlistBtn) {
+            playlistBtn.className = 'flex-1 py-2 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center space-x-1.5';
+        }
+        if (linksBtn) {
+            linksBtn.className = 'flex-1 py-2 rounded-lg bg-slate-800 text-emerald-400 shadow transition flex items-center justify-center space-x-1.5';
+        }
+    }
+}
+
+// Bóc tách và nạp toàn bộ video của Kênh hoặc Playlist
+async function submitPlaylistDownload() {
+    const urlInput = document.getElementById('playlistUrlInput');
+    const url = urlInput ? urlInput.value.trim() : '';
+    if (!url) {
+        showToast('Vui lòng nhập đường dẫn Kênh hoặc Playlist!', 'warning');
+        return;
+    }
+
+    const maxItems = parseInt(document.getElementById('playlistMaxItems')?.value || '20');
+    const format = document.getElementById('playlistFormat')?.value || 'video';
+    const quality = document.getElementById('playlistQuality')?.value || '1080p';
+    const btn = document.getElementById('btnPlaylistExtract');
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i> Đang bóc tách kênh...`;
+    }
+
+    showToast('Đang kết nối và phân tích toàn bộ video của Kênh/Playlist...', 'info');
+
+    try {
+        const res = await fetch('/api/playlist/extract', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                url: url,
+                max_items: maxItems,
+                format_type: format,
+                quality: quality,
+                session_id: getSessionId()
+            })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            showToast(`🎉 Bóc tách thành công: "${data.title || 'Kênh'}" - Đã nạp ${data.added_count} video vào hàng đợi!`, 'success');
+            closeModal('batchModal');
+            if (urlInput) urlInput.value = '';
+            loadTasks();
+            loadStats();
+        } else {
+            showToast(data.detail || 'Không thể bóc tách kênh/playlist này', 'error');
+        }
+    } catch (e) {
+        showToast('Lỗi kết nối khi bóc tách kênh/playlist', 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fa-solid fa-cloud-arrow-down mr-1"></i> Bóc Tách & Tải Toàn Bộ Kênh`;
+        }
     }
 }
 
@@ -581,6 +669,7 @@ function playVideo(taskId, encodedPath, encodedTitle) {
     const titleEl = document.getElementById('playerTitle');
     const dlClean = document.getElementById('playerDlClean');
     const dlProcessed = document.getElementById('playerDlProcessed');
+    const dlCompressed = document.getElementById('playerDlCompressed');
     const dlAudio = document.getElementById('playerDlAudio');
 
     titleEl.textContent = title;
@@ -596,6 +685,7 @@ function playVideo(taskId, encodedPath, encodedTitle) {
     if (taskId) {
         if (dlClean) dlClean.href = `/api/download/${taskId}?type=clean`;
         if (dlProcessed) dlProcessed.href = `/api/download/${taskId}?type=processed`;
+        if (dlCompressed) dlCompressed.href = `/api/download/${taskId}?type=compressed`;
         if (dlAudio) dlAudio.href = `/api/download/${taskId}?type=audio`;
     }
 

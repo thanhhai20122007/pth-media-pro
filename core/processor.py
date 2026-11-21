@@ -168,3 +168,56 @@ def extract_audio_mp3(input_path: str, output_path: Optional[str] = None) -> str
     ]
     subprocess.run(cmd, capture_output=True, check=True)
     return output_path
+
+
+def compress_video(
+    input_path: str,
+    output_path: Optional[str] = None,
+    crf: int = 28,
+    target_height: int = 720,
+    progress_callback: Optional[Callable[[float, str], None]] = None
+) -> str:
+    """
+    Bộ nén video thông minh siêu nhẹ (Smart Video Compression):
+    - Tối ưu cho thiết bị di động, chia sẻ qua Zalo, Messenger, Telegram
+    - Giảm 50% - 75% dung lượng tệp tin mà vẫn giữ độ nét sắc sảo trên màn hình điện thoại
+    - Hạn chế chiều cao tối đa target_height (mặc định 720p), H.264 CRF 28, preset faster, AAC 96k, +faststart
+    """
+    if not os.path.exists(input_path):
+        raise FileNotFoundError(f"Không tìm thấy file nguồn để nén: {input_path}")
+
+    if not output_path:
+        base = os.path.splitext(os.path.basename(input_path))[0]
+        output_path = os.path.join(PROCESSED_DIR, f"compressed_{base}.mp4")
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    # Co tỉ lệ nếu chiều cao > target_height, đảm bảo kích thước chẵn
+    vf_filter = f"scale='if(gt(ih,{target_height}),-2,iw)':'if(gt(ih,{target_height}),{target_height},-2)'"
+
+    cmd = [
+        FFMPEG_EXE, "-y",
+        "-i", input_path,
+        "-vf", vf_filter,
+        "-c:v", "libx264",
+        "-preset", "faster",
+        "-crf", str(crf),
+        "-c:a", "aac",
+        "-b:a", "96k",
+        "-movflags", "+faststart",
+        output_path
+    ]
+
+    if progress_callback:
+        progress_callback(10.0, "Đang nén video...")
+
+    process = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if process.returncode != 0:
+        err_msg = process.stderr[-300:] if process.stderr else "Lỗi FFmpeg khi nén"
+        raise Exception(f"Lỗi nén video: {err_msg}")
+
+    if progress_callback:
+        progress_callback(100.0, "Hoàn tất nén video")
+
+    return output_path
+
