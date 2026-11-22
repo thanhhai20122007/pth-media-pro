@@ -368,6 +368,7 @@ def download_with_ytdlp_engine(
         runtimes["node"] = {"path": node_bin}
     if runtimes:
         ydl_opts["js_runtimes"] = runtimes
+        ydl_opts["remote_components"] = ["ejs:github"]
 
     # Chỉ sử dụng aria2c nếu file nhị phân thực sự tồn tại trong hệ thống (tránh lỗi trên Linux/Render)
     aria2_exe = os.path.join(BIN_DIR, "aria2c.exe") if sys.platform == "win32" else "aria2c"
@@ -790,13 +791,14 @@ def download_via_desktop_node(
     remote_url: str,
     video_url: str,
     task_id: int,
+    platform: str = "general",
     format_type: str = "video",
     quality: str = "1080p",
     progress_callback: Optional[Callable[[float, str], None]] = None,
 ) -> Dict[str, Any]:
     """
     CẦU NỐI HYBRID CLOUD-TO-DESKTOP:
-    Khi Render (Cloud) nhận link YouTube, tự động ủy thác cho Máy tính gia đình (Residential IP)
+    Khi Render (Cloud) nhận link YouTube/MXH, tự động ủy thác cho Máy tính gia đình (Residential IP)
     tải siêu tốc 10 MB/s không cần tài khoản, sau đó kéo file hoàn tất về Render.
     """
     print(f"[HybridNode] 🌐 Ủy thác tải video qua Node Máy Tính: {remote_url}")
@@ -861,12 +863,12 @@ def download_via_desktop_node(
 
     return {
         "title": completed_task.get("title") or "Video",
-        "author": completed_task.get("author") or "YouTube",
+        "author": completed_task.get("author") or "Creator",
         "thumbnail": completed_task.get("thumbnail") or "",
         "duration": completed_task.get("duration") or 0,
         "file_path": target_path,
         "file_size": os.path.getsize(target_path) if os.path.exists(target_path) else 0,
-        "platform": "youtube",
+        "platform": completed_task.get("platform") or platform,
     }
 
 
@@ -912,6 +914,7 @@ def download_video_smart(
                     remote_tunnel,
                     cleaned_url,
                     task_id=task_id,
+                    platform=platform,
                     format_type=format_type,
                     quality=quality,
                     progress_callback=progress_callback,
@@ -942,7 +945,7 @@ def download_video_smart(
                     raise th_err
             raise th_err
 
-    # 3. CÁC NỀN TẢNG KHÁC (TikTok, YouTube, Facebook, Instagram, X, Douyin): yt-dlp Chrome Impersonation
+    # 4. CÁC NỀN TẢNG KHÁC (TikTok, YouTube, Facebook, Instagram, X, Douyin): yt-dlp Chrome Impersonation
     try:
         return download_with_ytdlp_engine(
             cleaned_url,
@@ -955,6 +958,25 @@ def download_video_smart(
     except Exception as ytdl_err:
         err_str = str(ytdl_err)
         print(f"[SmartDownloader] yt-dlp gặp vấn đề: {err_str[:160]}")
+
+        # TẦNG DỰ PHÒNG HYBRID: Nếu chạy trên Cloud và có Node Máy Tính, ủy thác tải qua Node
+        if is_cloud_env:
+            from core.tunnel import get_remote_tunnel_url
+            remote_tunnel = get_remote_tunnel_url()
+            if remote_tunnel:
+                try:
+                    print(f"[SmartDownloader] 🌐 Kích hoạt Node Máy Tính dự phòng cho {platform}...")
+                    return download_via_desktop_node(
+                        remote_tunnel,
+                        cleaned_url,
+                        task_id=task_id,
+                        platform=platform,
+                        format_type=format_type,
+                        quality=quality,
+                        progress_callback=progress_callback,
+                    )
+                except Exception as node_fb_err:
+                    print(f"[SmartDownloader] Node dự phòng báo lỗi: {node_fb_err}")
 
         # 4. TẦNG DỰ PHÒNG: Playwright Browser Engine (Chỉ kích hoạt nếu Playwright thực sự được cài đặt)
         if sync_playwright is not None and (any(w in err_str.lower() for w in ("429", "login", "redirected", "rate-limit", "generic", "unsupported", "cannot parse", "no video", "extractor", "story", "stories")) or platform == "facebook"):
