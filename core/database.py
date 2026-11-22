@@ -68,28 +68,51 @@ def init_db():
 
 
 def add_task(url: str, format_type: str = "video", title: str = None, session_id: str = "default", quality: str = "1080p") -> Optional[int]:
-    """Thêm một link vào danh sách chờ tải với phiên người dùng độc lập và chất lượng video"""
+    """Thêm một link vào danh sách chờ tải với phiên người dùng độc lập và chất lượng video (tương thích 100% mọi SQLite)"""
+    clean_url = url.strip()
     with get_db() as conn:
         try:
-            cur = conn.execute(
-                """
-                INSERT INTO tasks (url, format_type, title, status, progress, retry_count, session_id, quality)
-                VALUES (?, ?, ?, 'PENDING', 0.0, 0, ?, ?)
-                ON CONFLICT(url) DO UPDATE SET
-                    status = 'PENDING',
-                    retry_count = 0,
-                    error_log = NULL,
-                    format_type = excluded.format_type,
-                    session_id = excluded.session_id,
-                    quality = excluded.quality,
-                    updated_at = CURRENT_TIMESTAMP
-                """,
-                (url.strip(), format_type, title, session_id or "default", quality or "1080p")
-            )
-            return cur.lastrowid
+            # 1. Kiểm tra xem link này đã có trong cơ sở dữ liệu chưa
+            existing = conn.execute("SELECT id FROM tasks WHERE url = ?", (clean_url,)).fetchone()
+            if existing:
+                task_id = existing[0]
+                conn.execute(
+                    """
+                    UPDATE tasks SET
+                        status = 'PENDING',
+                        progress = 0.0,
+                        speed = 'Khởi động',
+                        retry_count = 0,
+                        error_log = NULL,
+                        format_type = ?,
+                        session_id = ?,
+                        quality = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (format_type, session_id or "default", quality or "1080p", task_id)
+                )
+                return task_id
+            else:
+                cur = conn.execute(
+                    """
+                    INSERT INTO tasks (url, format_type, title, status, progress, retry_count, session_id, quality)
+                    VALUES (?, ?, ?, 'PENDING', 0.0, 0, ?, ?)
+                    """,
+                    (clean_url, format_type, title, session_id or "default", quality or "1080p")
+                )
+                return cur.lastrowid
         except Exception as e:
             print(f"Lỗi thêm task: {e}")
-            return None
+            try:
+                cur = conn.execute(
+                    "INSERT INTO tasks (url, format_type, session_id, quality) VALUES (?, ?, ?, ?)",
+                    (clean_url, format_type, session_id or "default", quality or "1080p")
+                )
+                return cur.lastrowid
+            except Exception as e2:
+                print(f"Lỗi fallback thêm task: {e2}")
+                return None
 
 
 def get_task(task_id: int) -> Optional[Dict[str, Any]]:
