@@ -152,7 +152,7 @@ def download_file_stream(
         req_headers.update(headers)
 
     session = get_session()
-    resp = session.get(url, headers=req_headers, stream=True, timeout=35)
+    resp = session.get(url, headers=req_headers, stream=True, timeout=(15, 300))
     resp.raise_for_status()
 
     total_size = int(resp.headers.get("content-length", 0))
@@ -850,7 +850,11 @@ def download_via_desktop_node(
     target_path = os.path.join(out_dir, f"{clean_title}_{task_id}.{ext}")
 
     dl_file_url = f"{remote_url}/api/download/{node_task_id}"
-    download_file_stream(dl_file_url, target_path, headers={"Accept": "*/*"})
+    def stream_hook(pct, spd):
+        if progress_callback:
+            progress_callback(min(85.0 + (pct * 0.14), 99.0), f"⚡ Đồng bộ {spd}")
+
+    download_file_stream(dl_file_url, target_path, progress_callback=stream_hook, headers={"Accept": "*/*"})
 
     if progress_callback:
         progress_callback(100.0, "Hoàn tất")
