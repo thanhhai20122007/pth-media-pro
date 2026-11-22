@@ -323,7 +323,7 @@ def download_with_ytdlp_engine(
         "socket_timeout": 30,
         "extractor_args": {
             "youtube": {
-                "player_client": ["android", "web"]
+                "player_client": ["ios", "mweb", "android", "web"]
             }
         },
         "postprocessor_args": {
@@ -416,8 +416,30 @@ def download_with_ytdlp_engine(
             ydl_opts["format"] = "best"
         else:
             ydl_opts["format"] = "best[height<=1080]/best[height<=720]/best"
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+
+        if platform == "youtube":
+            # Tầng 2: Thử bộ giải mã mobile web & tv để vượt chặn Datacenter Cloud
+            ydl_opts["extractor_args"] = {
+                "youtube": {
+                    "player_client": ["mweb", "tv", "ios"]
+                }
+            }
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+        except Exception as second_err:
+            if platform == "youtube":
+                print(f"[SmartDownloader] Tầng 2 gặp lỗi ({str(second_err)[:100]}). Kích hoạt tầng 3 (tv_embedded / android_vr)...")
+                ydl_opts["extractor_args"] = {
+                    "youtube": {
+                        "player_client": ["tv_embedded", "android_vr", "web_safari"]
+                    }
+                }
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+            else:
+                raise second_err
 
     if not info:
         raise Exception("Không thể trích xuất thông tin video.")

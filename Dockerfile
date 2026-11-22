@@ -1,12 +1,15 @@
 FROM python:3.12-slim
 
-# Cài đặt FFmpeg, Aria2 và các công cụ cần thiết
-RUN apt-get update && apt-get install -y ffmpeg aria2 curl && rm -rf /var/lib/apt/lists/
+# Cài đặt Node.js (cần thiết giải mã chữ ký YouTube n-sig / bot challenge), FFmpeg, Aria2 và curl
+RUN apt-get update && apt-get install -y nodejs ffmpeg aria2 curl && rm -rf /var/lib/apt/lists/
 
 WORKDIR /app
 
+# Luôn cập nhật pip và yt-dlp lên bản mới nhất
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -U pip setuptools wheel && \
+    pip install --no-cache-dir -U -r requirements.txt && \
+    pip install --no-cache-dir -U yt-dlp
 
 COPY . .
 
