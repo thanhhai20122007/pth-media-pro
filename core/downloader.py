@@ -23,6 +23,7 @@ from core.config import (
     RAW_DIR,
     FFMPEG_EXE,
     BROWSER_DATA_DIR,
+    COOKIE_FILE,
 )
 
 
@@ -39,10 +40,9 @@ def resolve_redirect_url(url: str) -> str:
     """Mở rộng link rút gọn (fb.watch, facebook.com/share, threads.com/share, pin.it) về link gốc"""
     u = url.strip()
 
-    # KHÔNG can thiệp vào link TikTok / Douyin
-    # yt-dlp có sẵn TikTokVMIE xử lý trực tiếp vt.tiktok.com và vm.tiktok.com qua API di động
-    # Nếu dùng requests.head sẽ bị TikTok chặn và redirect về trang chủ https://www.tiktok.com/?_r=1
-    if any(k in u.lower() for k in ("tiktok.com", "douyin.com")):
+    # KHÔNG can thiệp vào link TikTok / Douyin và Facebook Story
+    # Tránh bị bot-detector chặn redirect về https://www.tiktok.com/?_r=1 hoặc login.php
+    if any(k in u.lower() for k in ("tiktok.com", "douyin.com", "facebook.com/stories", "fb.com/stories")):
         return u
 
     # Tự động phân giải link Facebook share (/share/r/, /share/v/, /share/p/, fb.watch)
@@ -394,10 +394,9 @@ def download_with_ytdlp_engine(
                 ydl_opts["format"] = "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]/best"
         ydl_opts["merge_output_format"] = "mp4"
 
-    # Kiểm tra nếu có cookie file trong profiles/browser_data hoặc data/
-    cookie_file = os.path.join(os.path.dirname(RAW_DIR), "cookies.txt")
-    if os.path.exists(cookie_file):
-        ydl_opts["cookiefile"] = cookie_file
+    # Kiểm tra nếu có cookie file trong data/cookies.txt
+    if os.path.exists(COOKIE_FILE) and os.path.getsize(COOKIE_FILE) > 10:
+        ydl_opts["cookiefile"] = COOKIE_FILE
 
     info = None
     try:
@@ -563,6 +562,178 @@ def download_threads_engine(
     }
 
 
+def parse_fb_story_id(url: str):
+    """Bóc tách User/Page ID và Story Media ID từ URL Story Facebook"""
+    import base64
+    match = re.search(r'facebook\.com/stories/(\d+)/([^/?]+)', url)
+    if not match:
+        return None, None
+    user_id = match.group(1)
+    b64_part = match.group(2)
+    media_id = None
+    try:
+        padded = b64_part + '=' * (-len(b64_part) % 4)
+        decoded = base64.b64decode(padded).decode('utf-8', errors='ignore')
+        nums = re.findall(r'\d{10,25}', decoded)
+        if nums:
+            media_id = nums[-1]
+    except Exception:
+        pass
+    return user_id, media_id
+
+
+def download_facebook_story_engine(
+    url: str,
+    task_id: int,
+    format_type: str = "video",
+    quality: str = "1080p",
+    progress_callback: Optional[Callable[[float, str], None]] = None,
+) -> Dict[str, Any]:
+    """
+    ENGINE CHUYÊN BIỆT CHO FACEBOOK STORIES:
+    Bóc tách và tải story Facebook cá nhân và Fanpage.
+    Bảo mật Meta yêu cầu đăng nhập tài khoản (cookies) để trích xuất tin 24h.
+    """
+    print(f"[FacebookStoryEngine] Khởi động giải mã Story: {url}")
+    if progress_callback:
+        progress_callback(10.0, "Đang phân tích Story Facebook...")
+
+    has_cookies = os.path.exists(COOKIE_FILE) and os.path.getsize(COOKIE_FILE) > 10
+    if not has_cookies:
+        raise Exception("Story Facebook luôn yêu cầu quyền xem. Vui lòng vào Cài đặt (⚙️) ở góc trên và dán Cookie Facebook (c_user, xs...) để tải Story mượt mà!")
+
+    user_id, media_id = parse_fb_story_id(url)
+
+    # 1. Thử cào trực tiếp qua Session có gắn Cookies
+    try:
+        import http.cookiejar
+        jar = http.cookiejar.MozillaCookieJar(COOKIE_FILE)
+        jar.load(ignore_discard=True, ignore_expires=True)
+        session = requests.Session()
+        session.cookies = jar
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Sec-Ch-Ua": '"Google Chrome";v="129", "Not=A?Brand";v="8", "Chromium";v="129"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"Windows"',
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Upgrade-Insecure-Requests": "1"
+        }
+        if progress_callback:
+            progress_callback(25.0, "Đang kết nối Facebook Story với Cookie...")
+
+        resp = session.get(url, headers=headers, allow_redirects=True, timeout=20)
+        final_url = resp.url
+        if "login" in final_url.lower():
+            raise Exception("Cookie Facebook hiện tại không hợp lệ hoặc đã hết hạn đăng nhập. Vui lòng cập nhật Cookie mới trong Cài đặt (⚙️)!")
+
+        html = resp.text
+
+        # Quét tìm luồng video stream MP4 từ Meta CDN trong nội dung HTML/JSON
+        video_urls = []
+        hd_matches = re.findall(r'playable_url_quality_hd["\:\s]+(https?://[^"\s\\]+)', html)
+        if not hd_matches:
+            hd_matches = re.findall(r'browser_native_hd_url["\:\s]+(https?://[^"\s\\]+)', html)
+        sd_matches = re.findall(r'playable_url["\:\s]+(https?://[^"\s\\]+)', html)
+        if not sd_matches:
+            sd_matches = re.findall(r'browser_native_sd_url["\:\s]+(https?://[^"\s\\]+)', html)
+
+        if hd_matches:
+            video_urls.extend(hd_matches)
+        if sd_matches:
+            video_urls.extend(sd_matches)
+
+        # Quét dự phòng tất cả link video fbcdn.net
+        if not video_urls:
+            fbcdn_videos = re.findall(r'https?:[\\/]+[a-zA-Z0-9.-]+\.fbcdn\.net[\\/][^"\'\s<>]+\.mp4[^"\'\s<>]*', html)
+            for fv in fbcdn_videos:
+                clean_fv = fv.replace(r'\/', '/').replace('\\u0026', '&').replace('&amp;', '&')
+                if clean_fv not in video_urls:
+                    video_urls.append(clean_fv)
+
+        if video_urls:
+            target_stream = video_urls[0].replace(r'\/', '/').replace('\\u0026', '&').replace('&amp;', '&')
+            if progress_callback:
+                progress_callback(50.0, "Bắt đầu tải trực tiếp video Story...")
+
+            # Bóc tách tiêu đề/tên người đăng
+            title_match = re.search(r'<title>(.*?)</title>', html)
+            raw_title = title_match.group(1).replace(" | Facebook", "").strip() if title_match else f"Story_{user_id or task_id}"
+            clean_title = sanitize_filename(raw_title)
+
+            out_dir = VIDEOS_DIR if format_type == "video" else AUDIOS_DIR
+            out_file = os.path.join(out_dir, f"video_{task_id}_{clean_title[:30]}.mp4")
+
+            v_resp = session.get(target_stream, stream=True, timeout=30)
+            total_size = int(v_resp.headers.get('content-length', 0))
+            downloaded = 0
+            with open(out_file, "wb") as vf:
+                for chunk in v_resp.iter_content(chunk_size=1024 * 256):
+                    if chunk:
+                        vf.write(chunk)
+                        downloaded += len(chunk)
+                        if total_size > 0 and progress_callback:
+                            pct = 50.0 + (downloaded / total_size * 48.0)
+                            progress_callback(min(pct, 98.0), f"{downloaded / (1024*1024):.1f} MB")
+
+            if format_type == "audio":
+                audio_file = os.path.join(AUDIOS_DIR, f"audio_{task_id}_{clean_title[:30]}.mp3")
+                cmd = [FFMPEG_EXE, "-y", "-i", out_file, "-vn", "-ab", "320k", audio_file]
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                if os.path.exists(out_file):
+                    try:
+                        os.remove(out_file)
+                    except Exception:
+                        pass
+                out_file = audio_file
+
+            if progress_callback:
+                progress_callback(100.0, "Hoàn tất")
+
+            return {
+                "title": raw_title,
+                "author": f"User {user_id}" if user_id else "Facebook User",
+                "thumbnail": "",
+                "duration": 0,
+                "file_path": out_file,
+                "file_size": os.path.getsize(out_file) if os.path.exists(out_file) else 0,
+                "platform": "facebook",
+            }
+    except Exception as scrape_err:
+        print(f"[FacebookStoryEngine] Cào trực tiếp báo: {scrape_err}. Chuyển sang yt-dlp cookie engine...")
+
+    # 2. TẦNG 2: Sử dụng yt-dlp với cookie file
+    candidates = []
+    if media_id:
+        candidates.append(f"https://www.facebook.com/watch/?v={media_id}")
+        if user_id:
+            candidates.append(f"https://www.facebook.com/{user_id}/videos/{media_id}/")
+            candidates.append(f"https://www.facebook.com/story.php?story_fbid={media_id}&id={user_id}")
+    candidates.append(url)
+
+    last_ytdl_err = None
+    for cand in candidates:
+        try:
+            print(f"[FacebookStoryEngine] Thử yt-dlp với candidate: {cand}")
+            return download_with_ytdlp_engine(
+                url=cand,
+                task_id=task_id,
+                platform="facebook",
+                format_type=format_type,
+                quality=quality,
+                progress_callback=progress_callback
+            )
+        except Exception as ey:
+            last_ytdl_err = ey
+
+    raise Exception("Không thể tải Story Facebook này. Cookie hiện tại có thể đã hết hạn hoặc Story được chia sẻ trong danh sách hạn chế/Bạn bè riêng tư.")
+
+
 def download_video_smart(
     url: str,
     task_id: int,
@@ -572,9 +743,10 @@ def download_video_smart(
 ) -> Dict[str, Any]:
     """
     HÀM ĐIỀU PHỐI THÔNG MINH ĐA TẦNG:
-    - Nếu là Threads: Kích hoạt ngay Engine chuyên dụng vượt chặn HTTP 429 của Meta
+    - Nếu là Facebook Story: Kích hoạt ngay FacebookStoryEngine giải mã tin 24h bằng Cookie
+    - Nếu là Threads: Kích hoạt ngay ThreadsEngine chuyên dụng vượt chặn HTTP 429 của Meta
     - Các nền tảng khác: Chạy yt-dlp với Chrome TLS Impersonation (curl_cffi)
-    - Tầng dự phòng: Playwright Browser với cookie phiên đăng nhập thực tế
+    - Tầng dự phòng: Playwright Browser với cookie phiên đăng nhập thực tế (khi có cài đặt)
     """
     cleaned_url = url.strip()
     cleaned_url = resolve_redirect_url(cleaned_url)
@@ -582,7 +754,17 @@ def download_video_smart(
 
     print(f"[SmartDownloader] Bắt đầu tải Task #{task_id} | Platform: {platform} | Quality: {quality} | URL: {cleaned_url}")
 
-    # 1. NỀN TẢNG THREADS: Ưu tiên Engine chuyên dụng vượt chặn HTTP 429
+    # 1. NỀN TẢNG FACEBOOK STORY: Ưu tiên Engine chuyên dụng giải mã Story
+    if platform == "facebook" and ("/stories/" in cleaned_url.lower() or "story.php" in cleaned_url.lower()):
+        return download_facebook_story_engine(
+            cleaned_url,
+            task_id=task_id,
+            format_type=format_type,
+            quality=quality,
+            progress_callback=progress_callback,
+        )
+
+    # 2. NỀN TẢNG THREADS: Ưu tiên Engine chuyên dụng vượt chặn HTTP 429
     if platform == "threads":
         try:
             return download_threads_engine(
@@ -593,17 +775,19 @@ def download_video_smart(
             )
         except Exception as th_err:
             print(f"[SmartDownloader] Threads Engine gặp lỗi: {th_err}. Chuyển sang Playwright dự phòng...")
-            try:
-                return extract_with_playwright_browser(
-                    cleaned_url,
-                    task_id=task_id,
-                    format_type=format_type,
-                    progress_callback=progress_callback,
-                )
-            except Exception:
-                raise th_err
+            if sync_playwright is not None:
+                try:
+                    return extract_with_playwright_browser(
+                        cleaned_url,
+                        task_id=task_id,
+                        format_type=format_type,
+                        progress_callback=progress_callback,
+                    )
+                except Exception:
+                    raise th_err
+            raise th_err
 
-    # 2. CÁC NỀN TẢNG KHÁC (TikTok, YouTube, Facebook, Instagram, X, Douyin): yt-dlp Chrome Impersonation
+    # 3. CÁC NỀN TẢNG KHÁC (TikTok, YouTube, Facebook, Instagram, X, Douyin): yt-dlp Chrome Impersonation
     try:
         return download_with_ytdlp_engine(
             cleaned_url,
@@ -617,7 +801,7 @@ def download_video_smart(
         err_str = str(ytdl_err)
         print(f"[SmartDownloader] yt-dlp gặp vấn đề: {err_str[:160]}")
 
-        # 3. TẦNG DỰ PHÒNG: Playwright Browser Engine (Chỉ kích hoạt nếu Playwright thực sự được cài đặt)
+        # 4. TẦNG DỰ PHÒNG: Playwright Browser Engine (Chỉ kích hoạt nếu Playwright thực sự được cài đặt)
         if sync_playwright is not None and (any(w in err_str.lower() for w in ("429", "login", "redirected", "rate-limit", "generic", "unsupported", "cannot parse", "no video", "extractor", "story", "stories")) or platform == "facebook"):
             print("[SmartDownloader] Kích hoạt Playwright Browser Engine để vượt rào cản...")
             try:
@@ -634,8 +818,19 @@ def download_video_smart(
                 raise Exception(f"Lỗi tải: {b_err[:150]}")
 
         # Thân thiện hóa thông báo lỗi thực tế cho người dùng mọi thiết bị
-        if "login" in err_str.lower() or "private" in err_str.lower():
-            raise Exception("Video này ở chế độ riêng tư hoặc yêu cầu đăng nhập tài khoản.")
+        has_cookies = os.path.exists(COOKIE_FILE) and os.path.getsize(COOKIE_FILE) > 10
+        if "/stories/" in cleaned_url.lower() or "story.php" in cleaned_url.lower():
+            if not has_cookies:
+                raise Exception("Story Facebook luôn yêu cầu quyền xem. Vui lòng vào Cài đặt (⚙️) ở góc trên và dán Cookie Facebook (c_user, xs...) để tải Story mượt mà!")
+            else:
+                raise Exception("Không thể xem Story này. Cookie Facebook có thể đã hết hạn hoặc bạn không nằm trong danh sách được xem Story.")
+        elif "instagram.com/stories" in cleaned_url.lower():
+            if not has_cookies:
+                raise Exception("Story Instagram yêu cầu quyền xem. Vui lòng vào Cài đặt (⚙️) và dán Cookie Instagram để tải!")
+            else:
+                raise Exception("Không thể tải Story Instagram. Cookie đã hết hạn hoặc Story ở chế độ bạn bè thân thiết.")
+        elif "login" in err_str.lower() or "private" in err_str.lower():
+            raise Exception("Video này ở chế độ riêng tư hoặc yêu cầu đăng nhập tài khoản (vào Cài đặt ⚙️ để thêm Cookie).")
         elif "unavailable" in err_str.lower() or "not found" in err_str.lower() or "404" in err_str:
             raise Exception("Video không tồn tại hoặc đã bị chủ sở hữu xóa.")
         elif "unsupported" in err_str.lower():

@@ -26,6 +26,7 @@ PROCESSED_DIR = os.path.join(DOWNLOADS_DIR, "processed")
 DATA_DIR = os.path.join(BASE_DIR, "data")
 RAW_DIR = os.path.join(DATA_DIR, "raw")
 DB_PATH = os.path.join(DATA_DIR, "tasks.db")
+COOKIE_FILE = os.path.join(DATA_DIR, "cookies.txt")
 
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 LOGO_PATH = os.path.join(ASSETS_DIR, "logo.png")

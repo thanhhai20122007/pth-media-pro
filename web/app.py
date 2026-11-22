@@ -17,6 +17,7 @@ from core.config import (
     VIDEOS_DIR,
     AUDIOS_DIR,
     PROCESSED_DIR,
+    COOKIE_FILE,
     open_folder_in_explorer,
 )
 from core.database import (
@@ -141,6 +142,11 @@ class BatchTaskRequest(BaseModel):
     format_type: Optional[str] = "video"
     quality: Optional[str] = "1080p"
     session_id: Optional[str] = "default"
+
+
+class CookieRequest(BaseModel):
+    cookie_content: str
+    domain: Optional[str] = ".facebook.com"
 
 
 class PlaylistExtractRequest(BaseModel):
@@ -799,6 +805,86 @@ async def api_save_settings(req: SettingsRequest):
             pass
     broadcast_sync({"event": "settings_updated", "data": data})
     return {"status": "success", "settings": get_all_settings()}
+
+
+@app.get("/api/cookies/status")
+async def api_get_cookie_status():
+    if not os.path.exists(COOKIE_FILE) or os.path.getsize(COOKIE_FILE) < 5:
+        return {"has_cookies": False, "size": 0, "domains": [], "updated_at": None}
+
+    try:
+        size = os.path.getsize(COOKIE_FILE)
+        mtime = time.strftime('%d/%m/%Y %H:%M:%S', time.localtime(os.path.getmtime(COOKIE_FILE)))
+        domains = set()
+        with open(COOKIE_FILE, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    parts = line.split("\t")
+                    if parts:
+                        d = parts[0].lstrip(".")
+                        if d:
+                            domains.add(d)
+        return {
+            "has_cookies": True,
+            "size": size,
+            "domains": list(domains),
+            "updated_at": mtime
+        }
+    except Exception as e:
+        return {"has_cookies": False, "error": str(e)}
+
+
+@app.post("/api/cookies")
+async def api_save_cookies(req: CookieRequest):
+    raw = req.cookie_content.strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Nội dung cookie không được để trống")
+
+    expires = int(time.time()) + 60 * 86400  # 60 ngày
+    lines = [
+        "# Netscape HTTP Cookie File",
+        "# Saved by PTH Media Pro Cookie Manager",
+        ""
+    ]
+
+    # Kiểm tra nếu người dùng dán toàn bộ file Netscape
+    if "# Netscape" in raw or "\t" in raw:
+        content = raw.strip() + "\n"
+    else:
+        # Chuỗi raw cookie: 'c_user=...; xs=...; datr=...'
+        pairs = raw.split(";")
+        for pair in pairs:
+            pair = pair.strip()
+            if not pair or "=" not in pair:
+                continue
+            name, val = pair.split("=", 1)
+            name = name.strip()
+            val = val.strip()
+            if not name:
+                continue
+            # Tự động gán cho .facebook.com và .instagram.com
+            lines.append(f".facebook.com\tTRUE\t/\tTRUE\t{expires}\t{name}\t{val}")
+            lines.append(f".instagram.com\tTRUE\t/\tTRUE\t{expires}\t{name}\t{val}")
+        content = "\n".join(lines) + "\n"
+
+    try:
+        with open(COOKIE_FILE, "w", encoding="utf-8") as f:
+            f.write(content)
+        return {"status": "success", "message": "Đã lưu và kích hoạt Cookie thành công!"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi khi lưu file cookie: {str(e)}")
+
+
+@app.delete("/api/cookies")
+async def api_delete_cookies():
+    if os.path.exists(COOKIE_FILE):
+        try:
+            os.remove(COOKIE_FILE)
+            return {"status": "success", "message": "Đã xóa toàn bộ cookie đã lưu"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Lỗi khi xóa cookie: {str(e)}")
+    return {"status": "success", "message": "Không có cookie nào để xóa"}
 
 
 @app.post("/api/login-session")

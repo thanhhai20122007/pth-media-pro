@@ -202,9 +202,84 @@ async function loadSettings() {
         if (settingMaxWorkers && settings.max_concurrent_downloads !== undefined) {
             settingMaxWorkers.value = settings.max_concurrent_downloads;
         }
+        await loadCookieStatus();
     } catch (err) {
         console.error('Lỗi nạp cài đặt:', err);
     }
+}
+
+async function loadCookieStatus() {
+    try {
+        const res = await fetch('/api/cookies/status');
+        const data = await res.json();
+        const badge = document.getElementById('cookieStatusBadge');
+        const infoText = document.getElementById('cookieInfoText');
+        const btnClear = document.getElementById('btnClearCookie');
+
+        if (data.has_cookies) {
+            if (badge) {
+                badge.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+                badge.innerHTML = '<i class="fa-solid fa-circle-check mr-1"></i>Đã kích hoạt Cookie';
+            }
+            if (infoText) {
+                const doms = data.domains && data.domains.length > 0 ? data.domains.join(', ') : 'facebook.com';
+                infoText.textContent = `🟢 Đã lưu (${data.size} B) - Miền: ${doms} - Cập nhật: ${data.updated_at || 'Mới nhất'}`;
+            }
+            if (btnClear) btnClear.classList.remove('hidden');
+        } else {
+            if (badge) {
+                badge.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30';
+                badge.innerHTML = '<i class="fa-solid fa-circle-exclamation mr-1"></i>Chưa gắn Cookie';
+            }
+            if (infoText) {
+                infoText.textContent = '⚪ Chưa có phiên đăng nhập lưu trữ';
+            }
+            if (btnClear) btnClear.classList.add('hidden');
+        }
+    } catch (e) {
+        console.error('Lỗi kiểm tra cookie:', e);
+    }
+}
+
+async function saveCookies() {
+    const input = document.getElementById('settingCookieInput');
+    if (!input) return;
+    const content = input.value.trim();
+    if (!content) {
+        showToast('Vui lòng dán chuỗi cookie (c_user=...; xs=...) hoặc file cookies.txt!', 'warning');
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/cookies', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cookie_content: content })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            showToast('✅ Đã lưu và kích hoạt Cookie thành công!', 'success');
+            input.value = '';
+            await loadCookieStatus();
+        } else {
+            showToast(data.detail || 'Lỗi khi lưu cookie', 'error');
+        }
+    } catch (e) {
+        showToast('Lỗi mạng khi lưu cookie', 'error');
+    }
+}
+
+async function clearCookies() {
+    if (!confirm('Bạn có chắc muốn xóa Cookie Facebook đã lưu không?')) return;
+    try {
+        const res = await fetch('/api/cookies', { method: 'DELETE' });
+        const data = await res.json();
+        showToast(data.message || 'Đã xóa cookie', 'info');
+        await loadCookieStatus();
+    } catch (e) {
+        showToast('Lỗi khi xóa cookie', 'error');
+    }
+}
 }
 
 async function saveSettings() {
@@ -736,6 +811,9 @@ function setFilter(filter) {
 
 function openModal(id) {
     document.getElementById(id)?.classList.remove('hidden');
+    if (id === 'settingsModal') {
+        loadCookieStatus();
+    }
 }
 
 function closeModal(id) {

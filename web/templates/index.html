@@ -476,16 +476,57 @@
 
     <!-- ==================== MODAL: SETTINGS ==================== -->
     <div id="settingsModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 shadow-2xl">
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                 <div class="flex items-center space-x-2">
                     <i class="fa-solid fa-gear text-emerald-400"></i>
-                    <h3 class="font-bold text-white text-base">Cài Đặt Hệ Thống</h3>
+                    <h3 class="font-bold text-white text-base">Cài Đặt Hệ Thống & Quản Lý Cookie</h3>
                 </div>
                 <button onclick="closeModal('settingsModal')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
             </div>
 
             <div class="space-y-4 text-xs">
+                <!-- Facebook & Social Media Cookie Manager -->
+                <div class="p-3.5 rounded-xl bg-slate-800/80 border border-slate-700/80 space-y-2.5">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <i class="fa-brands fa-facebook text-blue-400 text-sm"></i>
+                            <span class="font-bold text-white text-xs">Cookie Đăng Nhập (Story FB & Bài Riêng Tư)</span>
+                        </div>
+                        <span id="cookieStatusBadge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            <i class="fa-solid fa-circle-exclamation mr-1"></i>Chưa gắn Cookie
+                        </span>
+                    </div>
+                    <p class="text-[11px] text-slate-400 leading-relaxed">
+                        Facebook & Instagram bắt buộc đăng nhập để xem <span class="text-blue-300 font-semibold">Story 24h</span> hoặc bài bạn bè. Dán cookie tại đây để hệ thống tự động tải Story mượt mà không lo bị chặn!
+                    </p>
+                    <textarea id="settingCookieInput" rows="2" placeholder="Dán cookie c_user=...; xs=... hoặc toàn bộ file cookies.txt tại đây..." class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white font-mono text-[11px] focus:outline-none focus:border-blue-500"></textarea>
+                    
+                    <div class="flex items-center justify-between pt-1">
+                        <span id="cookieInfoText" class="text-[10px] text-slate-500">Chưa có phiên lưu</span>
+                        <div class="flex items-center space-x-2">
+                            <button type="button" onclick="clearCookies()" id="btnClearCookie" class="hidden px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-[11px] font-semibold transition">
+                                <i class="fa-solid fa-trash-can mr-1"></i>Xóa
+                            </button>
+                            <button type="button" onclick="saveCookies()" class="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold transition shadow-sm">
+                                <i class="fa-solid fa-key mr-1"></i>Lưu Cookie
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Quick Guide Accordion -->
+                    <details class="text-[10px] text-slate-400 bg-slate-950/60 rounded-lg p-2 border border-slate-800">
+                        <summary class="cursor-pointer font-semibold text-slate-300 hover:text-white flex items-center space-x-1">
+                            <i class="fa-solid fa-circle-question text-blue-400"></i>
+                            <span>Cách lấy Cookie Facebook trong 10 giây (Siêu dễ)</span>
+                        </summary>
+                        <div class="mt-2 space-y-1.5 pl-2 text-slate-300 border-l border-slate-700">
+                            <div><strong class="text-blue-300">Cách 1 (Nhanh nhất):</strong> Vào <span class="text-white font-mono">facebook.com</span> trên máy tính -> Bấm phím <kbd class="px-1 py-0.5 bg-slate-800 rounded text-amber-300 font-mono">F12</kbd> -> Chọn tab <strong>Console</strong> -> Gõ <code class="text-emerald-400 font-mono">document.cookie</code> rồi Enter -> Copy toàn bộ chuỗi kết quả và dán vào ô trên!</div>
+                            <div><strong class="text-blue-300">Cách 2 (Tiện ích):</strong> Dùng tiện ích Chrome <em>"Get cookies.txt LOCALLY"</em> -> Bấm Export -> Copy dán vào ô trên.</div>
+                        </div>
+                    </details>
+                </div>
+
                 <!-- Anti Duplicate Option -->
                 <div class="flex items-center justify-between p-3 rounded-xl bg-slate-800/60 border border-slate-700">
                     <div>
