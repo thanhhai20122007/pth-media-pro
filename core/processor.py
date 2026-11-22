@@ -221,3 +221,122 @@ def compress_video(
 
     return output_path
 
+
+def apply_custom_watermark(
+    input_path: str,
+    output_path: Optional[str] = None,
+    watermark_type: str = "text",          # "text" | "image"
+    watermark_text: str = "@PTH_Media",
+    watermark_image_path: Optional[str] = None,
+    position: str = "bottom_right",        # "top_left" | "top_right" | "bottom_left" | "bottom_right" | "center"
+    opacity: float = 0.85,                 # 0.1 to 1.0
+    font_size: int = 36,                   # 18 to 72
+    font_color: str = "white",             # white, yellow, cyan, red, green, orange
+    scale_factor: float = 0.20,            # 0.05 to 0.50 (cho logo ảnh)
+    progress_callback: Optional[Callable[[float, str], None]] = None
+) -> str:
+    """
+    BỘ ĐÓNG DẤU BẢN QUYỀN THƯƠNG HIỆU CHUYÊN NGHIỆP (Custom Watermark & Brand Overlay):
+    - Đóng dấu chữ (Text Watermark): @tên_kênh, hotline, bio
+    - Đóng dấu logo ảnh (PNG Watermark): logo thương hiệu trong suốt
+    - Tùy chỉnh vị trí (4 góc / chính giữa), chỉnh độ mờ (Opacity) và kích thước
+    - Tối ưu tốc độ cao: sao chép âm thanh (-c:a copy), encode video đa luồng veryfast
+    """
+    if not os.path.exists(input_path):
+        raise FileNotFoundError(f"Không tìm thấy file nguồn: {input_path}")
+
+    if not output_path:
+        base = os.path.splitext(os.path.basename(input_path))[0]
+        output_path = os.path.join(PROCESSED_DIR, f"watermarked_{base}.mp4")
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    if progress_callback:
+        progress_callback(10.0, "Đang khởi tạo bộ đóng dấu bản quyền...")
+
+    clamped_opacity = max(0.1, min(1.0, float(opacity)))
+
+    # Tọa độ vị trí cho Text (drawtext)
+    text_pos_map = {
+        "top_left": "x=30:y=30",
+        "top_right": "x=w-tw-30:y=30",
+        "bottom_left": "x=30:y=h-th-30",
+        "bottom_right": "x=w-tw-30:y=h-th-30",
+        "center": "x=(w-tw)/2:y=(h-th)/2",
+    }
+
+    # Tọa độ vị trí cho Image (overlay)
+    image_pos_map = {
+        "top_left": "30:30",
+        "top_right": "W-w-30:30",
+        "bottom_left": "30:H-h-30",
+        "bottom_right": "W-w-30:H-h-30",
+        "center": "(W-w)/2:(H-h)/2",
+    }
+
+    cmd = [FFMPEG_EXE, "-y"]
+
+    if watermark_type == "image":
+        logo_file = watermark_image_path if (watermark_image_path and os.path.exists(watermark_image_path)) else LOGO_PATH
+        if not os.path.exists(logo_file):
+            watermark_type = "text"
+
+    if watermark_type == "image":
+        pos_str = image_pos_map.get(position, "W-w-30:H-h-30")
+        scale = max(0.05, min(0.60, float(scale_factor)))
+        filter_str = (
+            f"[1:v]format=rgba,colorchannelmixer=aa={clamped_opacity},"
+            f"scale=iw*{scale}:-1[wm];"
+            f"[0:v][wm]overlay={pos_str}"
+        )
+        cmd.extend([
+            "-i", input_path,
+            "-i", logo_file,
+            "-filter_complex", filter_str,
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-crf", "22",
+            "-c:a", "copy",
+            "-movflags", "+faststart",
+            output_path
+        ])
+    else:
+        safe_text = watermark_text.strip() or "@PTH_Media"
+        escaped_text = safe_text.replace('\\', '\\\\').replace("'", "'\\\\''").replace(':', '\\:').replace('%', '\\%')
+        pos_str = text_pos_map.get(position, "x=w-tw-30:y=h-th-30")
+        font_sz = max(16, min(96, int(font_size)))
+        color = font_color.lower() if font_color in ("white", "yellow", "cyan", "red", "green", "orange") else "white"
+
+        vf = (
+            f"drawtext=text='{escaped_text}':"
+            f"fontsize={font_sz}:"
+            f"fontcolor={color}@{clamped_opacity}:"
+            f"{pos_str}:"
+            f"shadowcolor=black@0.7:shadowx=2:shadowy=2:"
+            f"box=1:boxcolor=black@0.3:boxborderw=6"
+        )
+        cmd.extend([
+            "-i", input_path,
+            "-vf", vf,
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-crf", "22",
+            "-c:a", "copy",
+            "-movflags", "+faststart",
+            output_path
+        ])
+
+    if progress_callback:
+        progress_callback(35.0, "Đang đóng dấu và xuất video...")
+
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if proc.returncode != 0:
+        err = proc.stderr[-300:] if proc.stderr else "Lỗi FFmpeg khi đóng dấu"
+        raise Exception(f"Lỗi đóng dấu bản quyền: {err}")
+
+    if progress_callback:
+        progress_callback(100.0, "Hoàn tất đóng dấu bản quyền")
+
+    return output_path
+
+

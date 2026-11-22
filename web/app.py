@@ -31,7 +31,7 @@ from core.database import (
     set_setting,
     get_setting,
 )
-from core.processor import apply_anti_duplicate_filter, extract_audio_mp3, compress_video
+from core.processor import apply_anti_duplicate_filter, extract_audio_mp3, compress_video, apply_custom_watermark
 from core.downloader import sanitize_filename, extract_playlist_or_channel
 from core.ai_engine import (
     apply_ai_autocaptions,
@@ -184,6 +184,17 @@ class AntiCopyrightRequest(BaseModel):
     task_id: int
     mirror: Optional[bool] = True
     speed_boost: Optional[float] = 1.04
+
+
+class WatermarkRequest(BaseModel):
+    task_id: int
+    watermark_type: Optional[str] = "text" # "text" | "image"
+    watermark_text: Optional[str] = "@PTH_Media"
+    position: Optional[str] = "bottom_right" # "top_left" | "top_right" | "bottom_left" | "bottom_right" | "center"
+    opacity: Optional[float] = 0.85
+    font_size: Optional[int] = 36
+    font_color: Optional[str] = "white"
+    scale_factor: Optional[float] = 0.20
 
 
 class SettingsRequest(BaseModel):
@@ -630,6 +641,50 @@ async def api_anti_copyright(req: AntiCopyrightRequest):
         raise HTTPException(status_code=500, detail=f"Lỗi xử lý lách bản quyền: {str(e)[:200]}")
 
 
+# ==================== TÍNH NĂNG 5: ĐÓNG DẤU BẢN QUYỀN THƯƠNG HIỆU ====================
+@app.post("/api/ai/watermark")
+async def api_apply_watermark(req: WatermarkRequest, bg_tasks: BackgroundTasks):
+    task = get_task(req.task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tác vụ")
+    src_path = task.get("raw_path") or task.get("final_path")
+    if not src_path or not os.path.exists(src_path):
+        raise HTTPException(status_code=400, detail="Không tìm thấy tệp video để đóng dấu")
+    sid = task.get("session_id", "default")
+
+    def run_wm():
+        try:
+            update_task(req.task_id, speed="Đang đóng dấu...", progress=30.0)
+            broadcast_sync({"event": "task_progress", "session_id": sid, "data": {"id": req.task_id, "session_id": sid, "progress": 30.0, "speed": "Đang đóng dấu..."}})
+
+            def cb(pct, msg):
+                update_task(req.task_id, speed=msg, progress=pct)
+                broadcast_sync({"event": "task_progress", "session_id": sid, "data": {"id": req.task_id, "session_id": sid, "progress": pct, "speed": msg}})
+
+            out_wm = os.path.join(PROCESSED_DIR, f"watermarked_{req.task_id}.mp4")
+            apply_custom_watermark(
+                input_path=src_path,
+                output_path=out_wm,
+                watermark_type=req.watermark_type or "text",
+                watermark_text=req.watermark_text or "@PTH_Media",
+                position=req.position or "bottom_right",
+                opacity=req.opacity if req.opacity is not None else 0.85,
+                font_size=req.font_size or 36,
+                font_color=req.font_color or "white",
+                scale_factor=req.scale_factor or 0.20,
+                progress_callback=cb
+            )
+
+            update_task(req.task_id, final_path=out_wm, speed="Đã đóng dấu", progress=100.0, status="DONE")
+            broadcast_sync({"event": "task_done", "session_id": sid, "data": {"id": req.task_id, "session_id": sid, "status": "DONE", "final_path": out_wm}})
+        except Exception as e:
+            update_task(req.task_id, error_log=f"Lỗi đóng dấu: {str(e)[:150]}")
+            broadcast_sync({"event": "task_error", "session_id": sid, "data": {"id": req.task_id, "session_id": sid, "error": str(e)[:150]}})
+
+    bg_tasks.add_task(run_wm)
+    return {"status": "watermarking_started"}
+
+
 
 
 @app.get("/api/download/{task_id}")
@@ -753,7 +808,12 @@ async def api_download_file(task_id: int, type: Optional[str] = None):
                 except Exception as e:
                     raise HTTPException(status_code=500, detail=f"Lỗi lách bản quyền: {str(e)[:150]}")
             else:
-                raise HTTPException(status_code=404, detail="Không tìm thấy file nguồn")
+                raise HTTPException(status_code=404, detail="Không tìm thấy file nguồn để lách bản quyền")
+
+    elif type == "watermarked":
+        wm_path = os.path.join(PROCESSED_DIR, f"watermarked_{task_id}.mp4")
+        if os.path.exists(wm_path):
+            target_path = wm_path
 
     elif type in ("clean", "raw"):
         # Video sạch gốc không logo

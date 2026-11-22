@@ -313,18 +313,22 @@ def download_with_ytdlp_engine(
         "no_playlist": True,
         "quiet": True,
         "no_warnings": True,
-        "concurrent_fragment_downloads": 8,  # 8 luồng song song ổn định không bị nghẽn
-        "buffersize": 1024 * 1024,
-        "http_chunk_size": 10485760,         # 10MB chunk
-        "retries": 10,
-        "fragment_retries": 10,
+        "concurrent_fragment_downloads": 16, # Tăng tốc 16 luồng song song đặc trị video dài/livestream/podcast
+        "buffersize": 16 * 1024 * 1024,      # Bộ đệm 16MB giảm tối đa độ trễ I/O đĩa
+        "http_chunk_size": 10485760,         # 10MB chunk tối ưu truyền tải
+        "retries": 15,
+        "fragment_retries": 15,
         "continuedl": True,
+        "nocheckcertificate": True,          # Bỏ qua xác thực SSL lặp lại trên từng mảnh phân đoạn
         "socket_timeout": 30,
         "extractor_args": {
             "youtube": {
-                "player_client": ["android", "web"],
+                "player_client": ["android", "ios", "mweb"], # Khắc phục triệt để YouTube throttling trên video dài
                 "player_skip": ["configs", "webpage"]
             }
+        },
+        "postprocessor_args": {
+            "Merger": ["-c", "copy"]         # Ghép luồng video + audio bằng stream copy chỉ 1-2 giây
         }
     }
 
@@ -336,11 +340,11 @@ def download_with_ytdlp_engine(
         ydl_opts["external_downloader"] = {"default": aria2_exe}
         ydl_opts["external_downloader_args"] = {
             "default": [
-                "-s", "8",
-                "-x", "8",
+                "-s", "16",
+                "-x", "16",
                 "-k", "1M",
                 "--min-split-size=1M",
-                "--max-connection-per-server=8",
+                "--max-connection-per-server=16",
                 "--file-allocation=none",
                 "--summary-interval=0"
             ]

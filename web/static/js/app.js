@@ -457,6 +457,10 @@ function renderTasks() {
                                 <i class="fa-solid fa-scissors"></i>
                                 <span class="hidden sm:inline">Highlights</span>
                             </button>
+                            <button onclick="openWatermarkModal(${task.id})" class="px-2.5 py-1.5 rounded-lg bg-pink-500/20 hover:bg-pink-500/30 text-pink-400 hover:text-pink-300 text-[11px] sm:text-xs font-bold transition flex items-center space-x-1 border border-pink-500/30 active:scale-95" title="Đóng dấu logo hoặc tên thương hiệu bản quyền">
+                                <i class="fa-solid fa-stamp"></i>
+                                <span class="hidden sm:inline">Đóng Dấu</span>
+                            </button>
                             <button onclick="playVideo(${task.id}, '${encodeURIComponent(finalFile)}', '${encodeURIComponent(titleText)}')" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-teal-400 hover:text-teal-300 text-xs font-semibold transition" title="Xem trước video">
                                 <i class="fa-solid fa-play"></i>
                             </button>
@@ -1330,5 +1334,95 @@ async function generateViralHighlights() {
 
 function playHighlightClip(clipUrl, title) {
     playHighlightClipInline(clipUrl, title);
+}
+
+// ==================== BỘ ĐÓNG DẤU BẢN QUYỀN THƯƠNG HIỆU ====================
+let currentWmTab = 'text';
+
+function openWatermarkModal(taskId) {
+    const wmTaskIdInput = document.getElementById('wmTaskId');
+    if (wmTaskIdInput) wmTaskIdInput.value = taskId;
+
+    const task = tasksCache.find(t => t.id === taskId);
+    const wmTextInput = document.getElementById('wmTextInput');
+    if (wmTextInput && (!wmTextInput.value || wmTextInput.value === '@PTH_Media')) {
+        const customHt = document.getElementById('settingHashtags')?.value || '';
+        const matchBrand = customHt.match(/#(\w+)/);
+        if (matchBrand) {
+            wmTextInput.value = '@' + matchBrand[1];
+        }
+    }
+    openModal('watermarkModal');
+}
+
+function switchWmTab(type) {
+    currentWmTab = type;
+    const textSec = document.getElementById('wmTextSection');
+    const imgSec = document.getElementById('wmImageSection');
+    const textBtn = document.getElementById('tabWmTextBtn');
+    const imgBtn = document.getElementById('tabWmImageBtn');
+
+    if (type === 'text') {
+        textSec?.classList.remove('hidden');
+        imgSec?.classList.add('hidden');
+        if (textBtn) textBtn.className = 'flex-1 py-2 rounded-lg bg-slate-800 text-pink-400 shadow transition flex items-center justify-center space-x-1.5';
+        if (imgBtn) imgBtn.className = 'flex-1 py-2 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center space-x-1.5';
+    } else {
+        textSec?.classList.add('hidden');
+        imgSec?.classList.remove('hidden');
+        if (imgBtn) imgBtn.className = 'flex-1 py-2 rounded-lg bg-slate-800 text-pink-400 shadow transition flex items-center justify-center space-x-1.5';
+        if (textBtn) textBtn.className = 'flex-1 py-2 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center space-x-1.5';
+    }
+}
+
+async function submitCustomWatermark() {
+    const taskId = parseInt(document.getElementById('wmTaskId')?.value);
+    if (!taskId) return;
+
+    const wmText = document.getElementById('wmTextInput')?.value.trim() || '@PTH_Media';
+    const fontSize = parseInt(document.getElementById('wmFontSize')?.value) || 36;
+    const fontColor = document.getElementById('wmFontColor')?.value || 'white';
+    const scaleFactor = parseFloat(document.getElementById('wmScaleFactor')?.value) || 0.20;
+    const position = document.querySelector('input[name="wmPosition"]:checked')?.value || 'bottom_right';
+    const opacity = (parseInt(document.getElementById('wmOpacitySlider')?.value) || 85) / 100.0;
+
+    const btn = document.getElementById('btnSubmitWatermark');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i>Đang đóng dấu...`;
+    }
+
+    try {
+        const res = await fetch('/api/ai/watermark', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                task_id: taskId,
+                watermark_type: currentWmTab,
+                watermark_text: wmText,
+                position: position,
+                opacity: opacity,
+                font_size: fontSize,
+                font_color: fontColor,
+                scale_factor: scaleFactor
+            })
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+            showToast('⚡ Bắt đầu đóng dấu bản quyền cho video!', 'success');
+            closeModal('watermarkModal');
+            loadTasks();
+        } else {
+            showToast(data.detail || 'Lỗi khi bắt đầu đóng dấu', 'error');
+        }
+    } catch (e) {
+        showToast('Lỗi mạng khi kết nối máy chủ', 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fa-solid fa-stamp mr-1"></i><span>Đóng Dấu Bản Quyền Ngay</span>`;
+        }
+    }
 }
 
