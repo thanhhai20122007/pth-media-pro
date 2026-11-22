@@ -1,7 +1,9 @@
 FROM python:3.12-slim
 
 # Cài đặt Node.js (cần thiết giải mã chữ ký YouTube n-sig / bot challenge), FFmpeg, Aria2 và curl
-RUN apt-get update && apt-get install -y nodejs ffmpeg aria2 curl && rm -rf /var/lib/apt/lists/
+RUN apt-get update && apt-get install -y nodejs ffmpeg aria2 curl && \
+    (which node || ln -sf /usr/bin/nodejs /usr/bin/node) && \
+    rm -rf /var/lib/apt/lists/
 
 WORKDIR /app
 

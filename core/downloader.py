@@ -321,18 +321,36 @@ def download_with_ytdlp_engine(
         "continuedl": True,
         "nocheckcertificate": True,          # Bỏ qua xác thực SSL lặp lại trên từng mảnh phân đoạn
         "socket_timeout": 30,
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["ios", "mweb", "android", "web"]
-            }
-        },
         "postprocessor_args": {
             "Merger": ["-c", "copy"]         # Ghép luồng video + audio bằng stream copy chỉ 1-2 giây
         }
     }
 
-    # Chỉ sử dụng aria2c nếu file nhị phân thực sự tồn tại trong hệ thống (tránh lỗi trên Linux/Render)
+    # Cấu hình giải mã YouTube chuyên biệt (Vượt triệt để HTTP Error 429 trên Cloud Render)
+    if platform == "youtube":
+        has_cookies = os.path.exists(COOKIE_FILE) and os.path.getsize(COOKIE_FILE) > 10
+        if has_cookies:
+            ydl_opts["extractor_args"] = {
+                "youtube": {
+                    "player_client": ["android", "web"]
+                }
+            }
+        else:
+            # Khi chạy trên Render (Datacenter IP): bỏ qua webpage để không bị 429, dùng thẳng Android InnerTube API
+            ydl_opts["extractor_args"] = {
+                "youtube": {
+                    "player_client": ["android"],
+                    "player_skip": ["webpage", "configs"]
+                }
+            }
+
+    # Tự động kích hoạt Node.js JS runtime để giải mã n-sig / bot challenge của YouTube
     import shutil
+    node_bin = shutil.which("node") or shutil.which("nodejs")
+    if node_bin:
+        ydl_opts["js_runtimes"] = {"node": {"path": node_bin}}
+
+    # Chỉ sử dụng aria2c nếu file nhị phân thực sự tồn tại trong hệ thống (tránh lỗi trên Linux/Render)
     aria2_exe = os.path.join(BIN_DIR, "aria2c.exe") if sys.platform == "win32" else "aria2c"
     has_aria2 = (sys.platform == "win32" and os.path.exists(aria2_exe)) or (sys.platform != "win32" and shutil.which("aria2c") is not None)
     if has_aria2 and platform not in ("tiktok", "douyin", "youtube"):
@@ -373,7 +391,7 @@ def download_with_ytdlp_engine(
             if platform == "tiktok":
                 ydl_opts["format"] = "bestvideo[height<=720][format_note!=watermarked]+bestaudio/best[height<=720][format_note!=watermarked]/best[height<=720]/best"
             elif platform == "youtube":
-                ydl_opts["format"] = "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720]/best"
+                ydl_opts["format"] = "bestvideo[height<=720]+bestaudio/bestvideo[height<=720]/best"
             elif platform == "facebook":
                 ydl_opts["format"] = "best[height<=720]/bestvideo[height<=720]+bestaudio/best"
             else:
@@ -382,7 +400,7 @@ def download_with_ytdlp_engine(
             if platform == "tiktok":
                 ydl_opts["format"] = "bestvideo[format_note!=watermarked]+bestaudio/best[format_note!=watermarked]/best"
             elif platform == "youtube":
-                ydl_opts["format"] = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
+                ydl_opts["format"] = "bestvideo+bestaudio/best"
             else:
                 ydl_opts["format"] = "bestvideo+bestaudio/best"
         else:
@@ -390,7 +408,7 @@ def download_with_ytdlp_engine(
             if platform == "tiktok":
                 ydl_opts["format"] = "bestvideo[format_note!=watermarked]+bestaudio/best[format_note!=watermarked]/best"
             elif platform == "youtube":
-                ydl_opts["format"] = "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best"
+                ydl_opts["format"] = "bestvideo[height<=1080]+bestaudio/bestvideo+bestaudio/best"
             elif platform == "facebook":
                 ydl_opts["format"] = "best[height<=1080]/bestvideo[height<=1080]+bestaudio/best"
             else:
@@ -410,36 +428,26 @@ def download_with_ytdlp_engine(
         # Loại bỏ external_downloader và hạ cấp sang định dạng tương thích cao nhất
         ydl_opts.pop("external_downloader", None)
         ydl_opts.pop("external_downloader_args", None)
-        if quality == "720p":
-            ydl_opts["format"] = "best[height<=720]/best"
-        elif quality in ("4k", "2k", "best"):
-            ydl_opts["format"] = "best"
-        else:
-            ydl_opts["format"] = "best[height<=1080]/best[height<=720]/best"
 
         if platform == "youtube":
-            # Tầng 2: Thử bộ giải mã mobile web & tv để vượt chặn Datacenter Cloud
+            # Tầng dự phòng: Dùng Android InnerTube thuần túy để vượt hoàn toàn HTTP 429 và thử nghiệm SABR
             ydl_opts["extractor_args"] = {
                 "youtube": {
-                    "player_client": ["mweb", "tv", "ios"]
+                    "player_client": ["android"],
+                    "player_skip": ["webpage", "configs"]
                 }
             }
-
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-        except Exception as second_err:
-            if platform == "youtube":
-                print(f"[SmartDownloader] Tầng 2 gặp lỗi ({str(second_err)[:100]}). Kích hoạt tầng 3 (tv_embedded / android_vr)...")
-                ydl_opts["extractor_args"] = {
-                    "youtube": {
-                        "player_client": ["tv_embedded", "android_vr", "web_safari"]
-                    }
-                }
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(url, download=True)
+            ydl_opts["format"] = "best"
+        else:
+            if quality == "720p":
+                ydl_opts["format"] = "best[height<=720]/best"
+            elif quality in ("4k", "2k", "best"):
+                ydl_opts["format"] = "best"
             else:
-                raise second_err
+                ydl_opts["format"] = "best[height<=1080]/best[height<=720]/best"
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
 
     if not info:
         raise Exception("Không thể trích xuất thông tin video.")
