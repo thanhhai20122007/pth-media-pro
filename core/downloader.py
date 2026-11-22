@@ -863,6 +863,11 @@ def download_video_smart(
                 raise Exception("Story Instagram yêu cầu quyền xem. Vui lòng vào Cài đặt (⚙️) và dán Cookie Instagram để tải!")
             else:
                 raise Exception("Không thể tải Story Instagram. Cookie đã hết hạn hoặc Story ở chế độ bạn bè thân thiết.")
+        elif platform == "youtube" and ("player response" in err_str.lower() or "429" in err_str.lower() or "bot" in err_str.lower()):
+            if not has_cookies:
+                raise Exception("YouTube chặn IP Cloud (HTTP 429). Hãy vào Cài đặt (⚙️) dán Cookie YouTube, hoặc chạy tool trên máy tính bằng file run_web.bat để tải siêu tốc không bị chặn!")
+            else:
+                raise Exception("Cookie YouTube hiện tại không hợp lệ hoặc đã hết hạn. Vui lòng cập nhật Cookie mới trong Cài đặt (⚙️)!")
         elif "login" in err_str.lower() or "private" in err_str.lower():
             raise Exception("Video này ở chế độ riêng tư hoặc yêu cầu đăng nhập tài khoản (vào Cài đặt ⚙️ để thêm Cookie).")
         elif "unavailable" in err_str.lower() or "not found" in err_str.lower() or "404" in err_str:
