@@ -36,8 +36,15 @@ def sanitize_filename(filename: str, max_length: int = 100) -> str:
 
 
 def resolve_redirect_url(url: str) -> str:
-    """Mở rộng link rút gọn (vt.tiktok.com, fb.watch, facebook.com/share, threads.com/share, pin.it) về link gốc"""
+    """Mở rộng link rút gọn (fb.watch, facebook.com/share, threads.com/share, pin.it) về link gốc"""
     u = url.strip()
+
+    # KHÔNG can thiệp vào link TikTok / Douyin
+    # yt-dlp có sẵn TikTokVMIE xử lý trực tiếp vt.tiktok.com và vm.tiktok.com qua API di động
+    # Nếu dùng requests.head sẽ bị TikTok chặn và redirect về trang chủ https://www.tiktok.com/?_r=1
+    if any(k in u.lower() for k in ("tiktok.com", "douyin.com")):
+        return u
+
     # Tự động phân giải link Facebook share (/share/r/, /share/v/, /share/p/, fb.watch)
     if any(k in u for k in ("fb.watch", "facebook.com/share", "fb.com/share")):
         try:
@@ -73,8 +80,11 @@ def resolve_redirect_url(url: str) -> str:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
         }
         resp = requests.head(u, headers=headers, allow_redirects=True, timeout=8)
-        if resp.url and resp.url.startswith("http") and "login" not in resp.url:
-            return resp.url
+        if resp.url and resp.url.startswith("http") and "login" not in resp.url and "checkpoint" not in resp.url:
+            from urllib.parse import urlparse
+            p = urlparse(resp.url)
+            if p.path and p.path not in ("/", "") and "_r=1" not in resp.url:
+                return resp.url
     except Exception:
         pass
     return u
@@ -318,9 +328,10 @@ def download_with_ytdlp_engine(
         }
     }
 
-    # Tối ưu hóa tải với aria2c an toàn không bị chặn 403 bởi YouTube/Facebook CDN
+    # Chỉ sử dụng aria2c nếu file nhị phân thực sự tồn tại trong hệ thống (tránh lỗi trên Linux/Render)
+    import shutil
     aria2_exe = os.path.join(BIN_DIR, "aria2c.exe") if sys.platform == "win32" else "aria2c"
-    has_aria2 = os.path.exists(aria2_exe) if sys.platform == "win32" else True
+    has_aria2 = (sys.platform == "win32" and os.path.exists(aria2_exe)) or (sys.platform != "win32" and shutil.which("aria2c") is not None)
     if has_aria2 and platform not in ("tiktok", "douyin", "youtube"):
         ydl_opts["external_downloader"] = {"default": aria2_exe}
         ydl_opts["external_downloader_args"] = {
@@ -606,8 +617,8 @@ def download_video_smart(
         err_str = str(ytdl_err)
         print(f"[SmartDownloader] yt-dlp gặp vấn đề: {err_str[:160]}")
 
-        # 3. TẦNG DỰ PHÒNG: Playwright Browser Engine (Đặc trị Facebook Stories, Bài viết riêng tư, Rate-limit)
-        if any(w in err_str.lower() for w in ("429", "login", "redirected", "rate-limit", "generic", "unsupported", "cannot parse", "no video", "extractor", "story", "stories")) or platform == "facebook":
+        # 3. TẦNG DỰ PHÒNG: Playwright Browser Engine (Chỉ kích hoạt nếu Playwright thực sự được cài đặt)
+        if sync_playwright is not None and (any(w in err_str.lower() for w in ("429", "login", "redirected", "rate-limit", "generic", "unsupported", "cannot parse", "no video", "extractor", "story", "stories")) or platform == "facebook"):
             print("[SmartDownloader] Kích hoạt Playwright Browser Engine để vượt rào cản...")
             try:
                 return extract_with_playwright_browser(
@@ -622,7 +633,17 @@ def download_video_smart(
                     raise Exception("Bài viết này yêu cầu tài khoản. Hãy mở Menu -> chọn [4] Đăng nhập tài khoản để lưu phiên!")
                 raise Exception(f"Lỗi tải: {b_err[:150]}")
 
-        raise ytdl_err
+        # Thân thiện hóa thông báo lỗi thực tế cho người dùng mọi thiết bị
+        if "login" in err_str.lower() or "private" in err_str.lower():
+            raise Exception("Video này ở chế độ riêng tư hoặc yêu cầu đăng nhập tài khoản.")
+        elif "unavailable" in err_str.lower() or "not found" in err_str.lower() or "404" in err_str:
+            raise Exception("Video không tồn tại hoặc đã bị chủ sở hữu xóa.")
+        elif "unsupported" in err_str.lower():
+            raise Exception("Đường dẫn video không được hỗ trợ hoặc không đúng định dạng.")
+        else:
+            clean_err = re.sub(r'ERROR:\s*\[[^\]]+\]\s*', '', err_str).strip()
+            clean_err = clean_err.split("\n")[0]
+            raise Exception(f"Lỗi tải: {clean_err[:120]}")
 
 
 def extract_playlist_or_channel(url: str, max_items: int = 30) -> Dict[str, Any]:

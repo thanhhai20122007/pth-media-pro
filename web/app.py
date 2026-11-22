@@ -6,6 +6,7 @@ import asyncio
 import mimetypes
 from typing import List, Dict, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks, Header
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -44,6 +45,15 @@ from core.worker import task_worker
 from core.clipboard_watcher import clipboard_watcher
 
 app = FastAPI(title="PTH Media Pro", description="Hệ thống tải video đa năng không logo & lách bản quyền thông minh")
+
+# Cho phép mọi thiết bị, điện thoại, máy tính từ mọi địa chỉ mạng kết nối an toàn 100%
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Thư mục web
 WEB_DIR = os.path.dirname(os.path.abspath(__file__))
