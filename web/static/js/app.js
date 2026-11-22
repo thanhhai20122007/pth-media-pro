@@ -280,6 +280,20 @@ async function clearCookies() {
         showToast('Lỗi khi xóa cookie', 'error');
     }
 }
+
+async function pasteCookieFromClipboard() {
+    try {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+            const inp = document.getElementById('settingCookieInput');
+            if (inp) {
+                inp.value = text.trim();
+                showToast('Đã dán Cookie từ bộ nhớ tạm! Bấm "Lưu Cookie" để kích hoạt.', 'info');
+            }
+        }
+    } catch (e) {
+        showToast('Vui lòng cấp quyền truy cập Clipboard cho trình duyệt', 'warning');
+    }
 }
 
 async function saveSettings() {
@@ -517,7 +531,15 @@ async function handlePasteFromClipboard() {
     try {
         const text = await navigator.clipboard.readText();
         if (text) {
-            document.getElementById('urlInput').value = text.trim();
+            const trimmed = text.trim();
+            if (trimmed.includes('c_user=') || trimmed.includes('# Netscape') || (trimmed.includes('xs=') && trimmed.includes(';'))) {
+                openModal('settingsModal');
+                const inp = document.getElementById('settingCookieInput');
+                if (inp) inp.value = trimmed;
+                showToast('💡 Phát hiện Cookie! Đã tự động điền vào Cài đặt, bấm "Lưu Cookie" để kích hoạt!', 'success');
+                return;
+            }
+            document.getElementById('urlInput').value = trimmed;
             showToast('Đã dán từ bộ nhớ tạm!', 'info');
         }
     } catch (e) {
@@ -723,15 +745,15 @@ async function openFolder(typeOrPath) {
     }
 }
 
-async function triggerLoginSession() {
-    try {
-        showToast('Đang mở trình duyệt đăng nhập...', 'info');
-        const res = await fetch('/api/login-session', { method: 'POST' });
-        const data = await res.json();
-        showToast('Trình duyệt đã mở. Hãy đăng nhập và tắt cửa sổ khi xong!', 'success');
-    } catch (e) {
-        showToast('Không thể mở trình duyệt đăng nhập', 'error');
-    }
+function triggerLoginSession() {
+    openModal('settingsModal');
+    setTimeout(() => {
+        const inp = document.getElementById('settingCookieInput');
+        if (inp) {
+            inp.focus();
+            inp.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }, 150);
 }
 
 function openCurrentVideoFolder() {
@@ -810,15 +832,31 @@ function setFilter(filter) {
 }
 
 function openModal(id) {
-    document.getElementById(id)?.classList.remove('hidden');
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove('hidden');
     if (id === 'settingsModal') {
         loadCookieStatus();
     }
 }
 
 function closeModal(id) {
-    document.getElementById(id)?.classList.add('hidden');
+    const el = document.getElementById(id);
+    if (el) el.classList.add('hidden');
 }
+
+// Đóng modal khi bấm Escape hoặc bấm ra vùng mờ bên ngoài
+window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('[id$="Modal"]').forEach(m => m.classList.add('hidden'));
+    }
+});
+
+document.addEventListener('click', (e) => {
+    if (e.target && e.target.id && e.target.id.endsWith('Modal')) {
+        closeModal(e.target.id);
+    }
+});
 
 function showToast(message, type = 'info') {
     const container = document.getElementById('toastContainer');

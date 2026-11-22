@@ -89,8 +89,8 @@
                     <span>Dùng trên ĐT</span>
                 </button>
 
-                <!-- Login Session Button (Desktop only) -->
-                <button onclick="triggerLoginSession()" class="hidden md:flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-3 py-1.5 rounded-xl text-xs font-semibold transition shadow-sm" title="Đăng nhập tài khoản lưu Cookie (TikTok, FB, Threads, Insta)">
+                <!-- Login Session & Cookie Button -->
+                <button onclick="triggerLoginSession()" class="flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold transition shadow-sm" title="Quản lý Cookie & Đăng nhập tài khoản (Facebook Story, TikTok, Threads, Insta)">
                     <i class="fa-solid fa-key text-emerald-400"></i>
                     <span>Đăng nhập MXH</span>
                 </button>
@@ -493,9 +493,15 @@
                             <i class="fa-brands fa-facebook text-blue-400 text-sm"></i>
                             <span class="font-bold text-white text-xs">Cookie Đăng Nhập (Story FB & Bài Riêng Tư)</span>
                         </div>
-                        <span id="cookieStatusBadge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                            <i class="fa-solid fa-circle-exclamation mr-1"></i>Chưa gắn Cookie
-                        </span>
+                        <div class="flex items-center space-x-1.5">
+                            <button type="button" onclick="pasteCookieFromClipboard()" class="text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold flex items-center space-x-1 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20" title="Dán nhanh cookie từ Clipboard">
+                                <i class="fa-regular fa-paste"></i>
+                                <span>Dán</span>
+                            </button>
+                            <span id="cookieStatusBadge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                <i class="fa-solid fa-circle-exclamation mr-1"></i>Chưa gắn Cookie
+                            </span>
+                        </div>
                     </div>
                     <p class="text-[11px] text-slate-400 leading-relaxed">
                         Facebook & Instagram bắt buộc đăng nhập để xem <span class="text-blue-300 font-semibold">Story 24h</span> hoặc bài bạn bè. Dán cookie tại đây để hệ thống tự động tải Story mượt mà không lo bị chặn!
@@ -882,6 +888,6 @@
     <!-- Notification Toast Container -->
     <div id="toastContainer" class="fixed bottom-5 right-5 z-50 space-y-2 pointer-events-none"></div>
 
-    <script src="/static/js/app.js"></script>
+    <script src="/static/js/app.js?v=2.6.0"></script>
 </body>
 </html>
