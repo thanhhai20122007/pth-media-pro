@@ -300,6 +300,26 @@ async def api_get_version():
     }
 
 
+@app.get("/api/debug/test-yt")
+async def api_debug_test_yt(url: str = "https://youtu.be/_Mzf9MvmGxM"):
+    """Chẩn đoán chi tiết log yt-dlp trực tiếp trên container Render"""
+    import subprocess
+    try:
+        proc = subprocess.run(
+            ["python", "-m", "yt_dlp", "-v", "--simulate", url],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        return {
+            "stdout": proc.stdout,
+            "stderr": proc.stderr,
+            "returncode": proc.returncode
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @app.get("/", response_class=HTMLResponse)
 async def get_index():
     index_file = os.path.join(TEMPLATES_DIR, "index.html")
