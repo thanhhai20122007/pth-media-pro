@@ -806,6 +806,16 @@ def download_via_desktop_node(
         progress_callback(10.0, "Kết nối Node Máy Tính...")
 
     session = get_session()
+    # Kiểm tra nhanh trạng thái Node máy tính trước khi giao việc
+    try:
+        chk = session.get(f"{remote_url}/api/version", timeout=4)
+        if chk.status_code != 200:
+            raise Exception("Node phản hồi mã HTTP không hợp lệ")
+    except Exception as e_chk:
+        from core.tunnel import set_remote_tunnel_url
+        set_remote_tunnel_url("")
+        raise Exception(f"Node máy tính không trực tuyến ({e_chk})")
+
     resp = session.post(
         f"{remote_url}/api/tasks",
         json={"url": video_url, "format_type": format_type, "quality": quality},

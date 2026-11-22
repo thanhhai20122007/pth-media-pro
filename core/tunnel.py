@@ -26,9 +26,9 @@ def set_remote_tunnel_url(url: str):
 
 
 def get_remote_tunnel_url() -> Optional[str]:
-    """Lấy link Node máy tính nếu còn hoạt động trong vòng 10 phút"""
+    """Lấy link Node máy tính nếu còn hoạt động trong vòng 3 phút"""
     global _REMOTE_TUNNEL_URL, _REMOTE_TUNNEL_TIME
-    if _REMOTE_TUNNEL_URL and (time.time() - _REMOTE_TUNNEL_TIME < 600):
+    if _REMOTE_TUNNEL_URL and (time.time() - _REMOTE_TUNNEL_TIME < 180):
         return _REMOTE_TUNNEL_URL
     return None
 
@@ -97,7 +97,7 @@ def start_tunnel(port: int = 5000) -> Optional[str]:
                         )
                     except Exception:
                         pass
-                    time.sleep(120)  # Cứ 2 phút gửi heartbeat 1 lần
+                    time.sleep(45)  # Cứ 45 giây gửi heartbeat 1 lần để Cloud luôn nhận diện Node
 
             threading.Thread(target=sync_to_cloud, args=(_PUBLIC_URL,), daemon=True).start()
 
