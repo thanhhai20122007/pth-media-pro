@@ -59,6 +59,25 @@ app.add_middleware(
 )
 
 
+def start_render_keepalive():
+    """Tự động gửi heartbeat 9 phút/lần chống Render Free Tier ngủ đông"""
+    if os.environ.get("PORT") and sys.platform != "win32":
+        def _loop():
+            import requests
+            time.sleep(45)
+            while True:
+                try:
+                    requests.get("https://pth-media-pro.onrender.com/api/version", timeout=15)
+                except Exception:
+                    pass
+                time.sleep(540)  # 9 phút (Render ngủ đông sau 15 phút)
+
+        import threading
+        threading.Thread(target=_loop, daemon=True).start()
+
+start_render_keepalive()
+
+
 def get_build_id() -> str:
     """Tạo hoặc đọc ID bản build để tự động đồng bộ trình duyệt khi có code mới"""
     build_file = os.path.join(BASE_DIR, "build_id.txt")
@@ -954,6 +973,8 @@ async def api_register_tunnel(req: Request):
         if t_url.startswith("http"):
             _REGISTERED_TUNNEL_URL = t_url
             _REGISTERED_TUNNEL_TIME = time.time()
+            from core.tunnel import set_remote_tunnel_url
+            set_remote_tunnel_url(t_url)
             return {"status": "ok", "tunnel_url": _REGISTERED_TUNNEL_URL}
     except Exception as e:
         return {"status": "error", "detail": str(e)}
@@ -963,17 +984,16 @@ async def api_register_tunnel(req: Request):
 @app.get("/api/tunnel/status")
 async def api_tunnel_status():
     """Kiểm tra xem máy tính cá nhân có đang online Tunnel không để web Cloud tự động hướng dẫn"""
-    global _REGISTERED_TUNNEL_URL, _REGISTERED_TUNNEL_TIME
-    from core.tunnel import get_public_tunnel_url
+    from core.tunnel import get_public_tunnel_url, get_remote_tunnel_url
     local_tunnel = get_public_tunnel_url()
+    remote_tunnel = get_remote_tunnel_url()
     is_cloud = bool(os.environ.get("PORT") and sys.platform != "win32")
 
-    has_active_remote = bool(_REGISTERED_TUNNEL_URL and (time.time() - _REGISTERED_TUNNEL_TIME < 600))
-    effective_url = local_tunnel or (_REGISTERED_TUNNEL_URL if has_active_remote else None)
+    effective_url = local_tunnel or remote_tunnel
 
     return {
         "is_cloud": is_cloud,
-        "is_node_online": bool(local_tunnel or has_active_remote),
+        "is_node_online": bool(effective_url),
         "tunnel_url": effective_url,
         "mode": "cloud" if is_cloud else "desktop"
     }
@@ -981,12 +1001,10 @@ async def api_tunnel_status():
 
 @app.get("/api/tunnel")
 async def api_get_tunnel():
-    global _REGISTERED_TUNNEL_URL, _REGISTERED_TUNNEL_TIME
-    from core.tunnel import get_public_tunnel_url
+    from core.tunnel import get_public_tunnel_url, get_remote_tunnel_url
     local_tunnel = get_public_tunnel_url()
-    has_active_remote = bool(_REGISTERED_TUNNEL_URL and (time.time() - _REGISTERED_TUNNEL_TIME < 600))
-    final_url = local_tunnel or (_REGISTERED_TUNNEL_URL if has_active_remote else None)
-    return {"public_url": final_url}
+    remote_tunnel = get_remote_tunnel_url()
+    return {"public_url": local_tunnel or remote_tunnel}
 
 
 @app.get("/api/settings")

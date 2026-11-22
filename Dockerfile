@@ -1,8 +1,9 @@
 FROM python:3.12-slim
 
-# Cài đặt Node.js (cần thiết giải mã chữ ký YouTube n-sig / bot challenge), FFmpeg, Aria2 và curl
-RUN apt-get update && apt-get install -y nodejs ffmpeg aria2 curl && \
+# Cài đặt Node.js, Deno (giải mã bot challenge của YouTube), FFmpeg, Aria2, curl và unzip
+RUN apt-get update && apt-get install -y nodejs ffmpeg aria2 curl unzip && \
     (which node || ln -sf /usr/bin/nodejs /usr/bin/node) && \
+    (curl -fsSL https://deno.land/install.sh | sh && cp /root/.deno/bin/deno /usr/local/bin/deno && chmod +x /usr/local/bin/deno || true) && \
     rm -rf /var/lib/apt/lists/
 
 WORKDIR /app

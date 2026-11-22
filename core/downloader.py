@@ -313,9 +313,6 @@ def download_with_ytdlp_engine(
         "no_playlist": True,
         "quiet": True,
         "no_warnings": True,
-        "concurrent_fragment_downloads": 16, # Tăng tốc 16 luồng song song đặc trị video dài/livestream/podcast
-        "buffersize": 16 * 1024 * 1024,      # Bộ đệm 16MB giảm tối đa độ trễ I/O đĩa
-        "http_chunk_size": 10485760,         # 10MB chunk tối ưu truyền tải
         "retries": 15,
         "fragment_retries": 15,
         "continuedl": True,
@@ -326,29 +323,51 @@ def download_with_ytdlp_engine(
         }
     }
 
-    # Cấu hình giải mã YouTube chuyên biệt (Vượt triệt để HTTP Error 429 trên Cloud Render)
+    # Tối ưu hóa bộ nhớ RAM linh hoạt: Trên Cloud (Render 512MB RAM) dùng cấu hình tinh gọn chống crash; trên PC dùng full công suất
+    is_cloud_env = bool(os.environ.get("PORT") and sys.platform != "win32")
+    if is_cloud_env:
+        ydl_opts["concurrent_fragment_downloads"] = 4
+        ydl_opts["buffersize"] = 4 * 1024 * 1024
+        ydl_opts["http_chunk_size"] = 5242880
+    else:
+        ydl_opts["concurrent_fragment_downloads"] = 16
+        ydl_opts["buffersize"] = 16 * 1024 * 1024
+        ydl_opts["http_chunk_size"] = 10485760
+
+    # Cấu hình giải mã YouTube chuyên biệt
     if platform == "youtube":
         has_cookies = os.path.exists(COOKIE_FILE) and os.path.getsize(COOKIE_FILE) > 10
         if has_cookies:
             ydl_opts["extractor_args"] = {
                 "youtube": {
-                    "player_client": ["android", "web"]
+                    "player_client": ["web", "android", "ios"]
+                }
+            }
+        elif is_cloud_env:
+            ydl_opts["extractor_args"] = {
+                "youtube": {
+                    "player_client": ["android", "ios", "mweb"]
                 }
             }
         else:
-            # Khi chạy trên Render (Datacenter IP): bỏ qua webpage để không bị 429, dùng thẳng Android InnerTube API
+            # Trên máy tính (IP dân dụng Việt Nam): Mở toàn bộ luồng 4K/Full HD
             ydl_opts["extractor_args"] = {
                 "youtube": {
-                    "player_client": ["android"],
-                    "player_skip": ["webpage", "configs"]
+                    "player_client": ["web", "android", "ios"]
                 }
             }
 
-    # Tự động kích hoạt Node.js JS runtime để giải mã n-sig / bot challenge của YouTube
+    # Tự động kích hoạt Deno & Node.js JS runtime để giải mã n-sig / bot challenge của YouTube
     import shutil
+    deno_bin = shutil.which("deno")
     node_bin = shutil.which("node") or shutil.which("nodejs")
+    runtimes = {}
+    if deno_bin:
+        runtimes["deno"] = {"path": deno_bin}
     if node_bin:
-        ydl_opts["js_runtimes"] = {"node": {"path": node_bin}}
+        runtimes["node"] = {"path": node_bin}
+    if runtimes:
+        ydl_opts["js_runtimes"] = runtimes
 
     # Chỉ sử dụng aria2c nếu file nhị phân thực sự tồn tại trong hệ thống (tránh lỗi trên Linux/Render)
     aria2_exe = os.path.join(BIN_DIR, "aria2c.exe") if sys.platform == "win32" else "aria2c"
@@ -767,6 +786,86 @@ def download_facebook_story_engine(
     raise Exception("Không thể tải Story Facebook này. Cookie hiện tại có thể đã hết hạn hoặc Story được chia sẻ trong danh sách hạn chế/Bạn bè riêng tư.")
 
 
+def download_via_desktop_node(
+    remote_url: str,
+    video_url: str,
+    task_id: int,
+    format_type: str = "video",
+    quality: str = "1080p",
+    progress_callback: Optional[Callable[[float, str], None]] = None,
+) -> Dict[str, Any]:
+    """
+    CẦU NỐI HYBRID CLOUD-TO-DESKTOP:
+    Khi Render (Cloud) nhận link YouTube, tự động ủy thác cho Máy tính gia đình (Residential IP)
+    tải siêu tốc 10 MB/s không cần tài khoản, sau đó kéo file hoàn tất về Render.
+    """
+    print(f"[HybridNode] 🌐 Ủy thác tải video qua Node Máy Tính: {remote_url}")
+    if progress_callback:
+        progress_callback(10.0, "Kết nối Node Máy Tính...")
+
+    session = get_session()
+    resp = session.post(
+        f"{remote_url}/api/tasks",
+        json={"url": video_url, "format_type": format_type, "quality": quality},
+        timeout=15
+    )
+    resp.raise_for_status()
+    node_task_id = resp.json().get("id")
+    if not node_task_id:
+        raise Exception("Không thể tạo tác vụ trên Node Máy Tính")
+
+    t0 = time.time()
+    completed_task = None
+    while time.time() - t0 < 600:
+        time.sleep(2.0)
+        try:
+            r = session.get(f"{remote_url}/api/tasks", timeout=10)
+            if r.status_code == 200:
+                tasks = r.json().get("tasks", [])
+                t_info = next((t for t in tasks if t.get("id") == node_task_id), None)
+                if t_info:
+                    st = t_info.get("status")
+                    pct = float(t_info.get("progress") or 0.0)
+                    spd = t_info.get("speed") or "Đang xử lý..."
+                    if progress_callback:
+                        progress_callback(min(pct * 0.7 + 10.0, 80.0), f"⚡ Node: {spd}")
+                    if st == "DONE":
+                        completed_task = t_info
+                        break
+                    elif st == "FAILED":
+                        raise Exception(t_info.get("error_log") or "Node tải thất bại")
+        except Exception as poll_err:
+            if "Node tải thất bại" in str(poll_err):
+                raise poll_err
+
+    if not completed_task:
+        raise Exception("Node máy tính phản hồi quá thời gian chờ (Timeout)")
+
+    if progress_callback:
+        progress_callback(85.0, "Đang truyền tệp về Cloud...")
+
+    out_dir = AUDIOS_DIR if format_type == "audio" else VIDEOS_DIR
+    clean_title = sanitize_filename(completed_task.get("title") or f"video_{task_id}")
+    ext = "mp3" if format_type == "audio" else "mp4"
+    target_path = os.path.join(out_dir, f"{clean_title}_{task_id}.{ext}")
+
+    dl_file_url = f"{remote_url}/api/download/{node_task_id}"
+    download_file_stream(dl_file_url, target_path, headers={"Accept": "*/*"})
+
+    if progress_callback:
+        progress_callback(100.0, "Hoàn tất")
+
+    return {
+        "title": completed_task.get("title") or "Video",
+        "author": completed_task.get("author") or "YouTube",
+        "thumbnail": completed_task.get("thumbnail") or "",
+        "duration": completed_task.get("duration") or 0,
+        "file_path": target_path,
+        "file_size": os.path.getsize(target_path) if os.path.exists(target_path) else 0,
+        "platform": "youtube",
+    }
+
+
 def download_video_smart(
     url: str,
     task_id: int,
@@ -778,6 +877,7 @@ def download_video_smart(
     HÀM ĐIỀU PHỐI THÔNG MINH ĐA TẦNG:
     - Nếu là Facebook Story: Kích hoạt ngay FacebookStoryEngine giải mã tin 24h bằng Cookie
     - Nếu là Threads: Kích hoạt ngay ThreadsEngine chuyên dụng vượt chặn HTTP 429 của Meta
+    - Nếu trên Cloud và có Node Máy Tính: Tự động ủy thác tải qua Node Máy Tính
     - Các nền tảng khác: Chạy yt-dlp với Chrome TLS Impersonation (curl_cffi)
     - Tầng dự phòng: Playwright Browser với cookie phiên đăng nhập thực tế (khi có cài đặt)
     """
@@ -797,7 +897,25 @@ def download_video_smart(
             progress_callback=progress_callback,
         )
 
-    # 2. NỀN TẢNG THREADS: Ưu tiên Engine chuyên dụng vượt chặn HTTP 429
+    # 2. CẦU NỐI TĂNG TỐC CHO YOUTUBE TRÊN CLOUD RENDER
+    is_cloud_env = bool(os.environ.get("PORT") and sys.platform != "win32")
+    if platform == "youtube" and is_cloud_env:
+        from core.tunnel import get_remote_tunnel_url
+        remote_tunnel = get_remote_tunnel_url()
+        if remote_tunnel:
+            try:
+                return download_via_desktop_node(
+                    remote_tunnel,
+                    cleaned_url,
+                    task_id=task_id,
+                    format_type=format_type,
+                    quality=quality,
+                    progress_callback=progress_callback,
+                )
+            except Exception as h_err:
+                print(f"[SmartDownloader] Node máy tính gặp lỗi ({h_err}). Chuyển sang tải trực tiếp...")
+
+    # 3. NỀN TẢNG THREADS: Ưu tiên Engine chuyên dụng vượt chặn HTTP 429
     if platform == "threads":
         try:
             return download_threads_engine(

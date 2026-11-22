@@ -9,11 +9,28 @@ from core.config import BIN_DIR
 
 _TUNNEL_PROC: Optional[subprocess.Popen] = None
 _PUBLIC_URL: Optional[str] = None
+_REMOTE_TUNNEL_URL: Optional[str] = None
+_REMOTE_TUNNEL_TIME: float = 0.0
 
 
 def get_public_tunnel_url() -> Optional[str]:
     global _PUBLIC_URL
     return _PUBLIC_URL
+
+
+def set_remote_tunnel_url(url: str):
+    """Lưu trữ link Tunnel của Node máy tính được đăng ký lên Cloud Render"""
+    global _REMOTE_TUNNEL_URL, _REMOTE_TUNNEL_TIME
+    _REMOTE_TUNNEL_URL = (url or "").strip().rstrip("/")
+    _REMOTE_TUNNEL_TIME = time.time()
+
+
+def get_remote_tunnel_url() -> Optional[str]:
+    """Lấy link Node máy tính nếu còn hoạt động trong vòng 10 phút"""
+    global _REMOTE_TUNNEL_URL, _REMOTE_TUNNEL_TIME
+    if _REMOTE_TUNNEL_URL and (time.time() - _REMOTE_TUNNEL_TIME < 600):
+        return _REMOTE_TUNNEL_URL
+    return None
 
 
 def start_tunnel(port: int = 5000) -> Optional[str]:

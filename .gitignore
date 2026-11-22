@@ -2,6 +2,7 @@
 bin/
 downloads/
 data/*.db*
+data/*.txt
 profiles/
 __pycache__/
 *.pyc
