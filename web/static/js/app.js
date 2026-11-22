@@ -190,6 +190,22 @@ async function loadSettings() {
         if (settingAntiDup && settings.anti_duplicate !== undefined) {
             settingAntiDup.checked = settings.anti_duplicate;
         }
+        const settingAutoWm = document.getElementById('settingAutoWatermark');
+        if (settingAutoWm && settings.auto_watermark !== undefined) {
+            settingAutoWm.checked = settings.auto_watermark;
+        }
+        if (settings.watermark_text) {
+            const inWm = document.getElementById('inlineWmText');
+            if (inWm) inWm.value = settings.watermark_text;
+            const wmIn = document.getElementById('wmText');
+            if (wmIn) wmIn.value = settings.watermark_text;
+        }
+        if (settings.watermark_position) {
+            const inPos = document.getElementById('inlineWmPos');
+            if (inPos) inPos.value = settings.watermark_position;
+            const wmPos = document.getElementById('wmPosition');
+            if (wmPos) wmPos.value = settings.watermark_position;
+        }
         const settingBlurBg = document.getElementById('settingBlurBg');
         if (settingBlurBg && settings.blur_background !== undefined) {
             settingBlurBg.checked = settings.blur_background;
@@ -299,6 +315,7 @@ async function pasteCookieFromClipboard() {
 async function saveSettings() {
     const payload = {
         anti_duplicate: document.getElementById('settingAntiDup').checked,
+        auto_watermark: document.getElementById('settingAutoWatermark')?.checked || false,
         blur_background: document.getElementById('settingBlurBg').checked,
         custom_hashtags: document.getElementById('settingHashtags').value.trim(),
         max_concurrent_downloads: parseInt(document.getElementById('settingMaxWorkers').value) || 4
@@ -313,6 +330,17 @@ async function saveSettings() {
         closeModal('settingsModal');
     } catch (e) {
         showToast('Lỗi khi lưu cài đặt', 'error');
+    }
+}
+
+function toggleWatermarkInlineBar(show) {
+    const bar = document.getElementById('inlineWatermarkBar');
+    if (bar) {
+        if (show) {
+            bar.classList.remove('hidden');
+        } else {
+            bar.classList.add('hidden');
+        }
     }
 }
 
@@ -499,6 +527,17 @@ async function handleDownloadSubmit(e) {
 
     const mode = document.querySelector('input[name="downloadMode"]:checked')?.value || 'video';
     const quality = document.getElementById('qualitySelect')?.value || '1080p';
+
+    if (mode === 'watermarked') {
+        const wmText = document.getElementById('inlineWmText')?.value.trim() || '@PTH_Media';
+        const wmPos = document.getElementById('inlineWmPos')?.value || 'bottom_right';
+        fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ watermark_text: wmText, watermark_position: wmPos })
+        }).catch(() => {});
+    }
+
     const btn = document.getElementById('btnSubmit');
 
     btn.disabled = true;

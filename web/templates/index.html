@@ -156,7 +156,7 @@
                         <!-- Radio Mode Selector -->
                         <div class="flex flex-wrap items-center gap-2" id="modeSelector">
                             <label class="cursor-pointer">
-                                <input type="radio" name="downloadMode" value="video" class="peer sr-only" checked>
+                                <input type="radio" name="downloadMode" value="video" class="peer sr-only" checked onchange="toggleWatermarkInlineBar(false)">
                                 <span class="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 border border-slate-700 bg-slate-900/70 text-slate-300 peer-checked:bg-emerald-500/20 peer-checked:text-emerald-400 peer-checked:border-emerald-500/40 transition">
                                     <i class="fa-solid fa-video"></i>
                                     <span>Video Sạch (Không Logo)</span>
@@ -164,7 +164,15 @@
                             </label>
 
                             <label class="cursor-pointer">
-                                <input type="radio" name="downloadMode" value="audio" class="peer sr-only">
+                                <input type="radio" name="downloadMode" value="watermarked" class="peer sr-only" onchange="toggleWatermarkInlineBar(true)">
+                                <span class="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 border border-slate-700 bg-slate-900/70 text-slate-300 peer-checked:bg-pink-500/20 peer-checked:text-pink-400 peer-checked:border-pink-500/40 transition" title="Tự động gắn tên kênh hoặc logo thương hiệu">
+                                    <i class="fa-solid fa-stamp"></i>
+                                    <span>Đóng Dấu Bản Quyền (Tùy Chọn)</span>
+                                </span>
+                            </label>
+
+                            <label class="cursor-pointer">
+                                <input type="radio" name="downloadMode" value="audio" class="peer sr-only" onchange="toggleWatermarkInlineBar(false)">
                                 <span class="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 border border-slate-700 bg-slate-900/70 text-slate-300 peer-checked:bg-teal-500/20 peer-checked:text-teal-400 peer-checked:border-teal-500/40 transition">
                                     <i class="fa-solid fa-music"></i>
                                     <span>Tách Nhạc MP3 320k</span>
@@ -172,7 +180,7 @@
                             </label>
 
                             <label class="cursor-pointer">
-                                <input type="radio" name="downloadMode" value="processed" class="peer sr-only">
+                                <input type="radio" name="downloadMode" value="processed" class="peer sr-only" onchange="toggleWatermarkInlineBar(false)">
                                 <span class="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 border border-slate-700 bg-slate-900/70 text-slate-300 peer-checked:bg-purple-500/20 peer-checked:text-purple-400 peer-checked:border-purple-500/40 transition">
                                     <i class="fa-solid fa-wand-magic-sparkles"></i>
                                     <span>Lách Bản Quyền 9:16 (FFmpeg)</span>
@@ -202,6 +210,28 @@
                                 <span>Tải Hàng Loạt / Playlist</span>
                             </button>
                         </div>
+                    </div>
+
+                    <!-- Inline Watermark Config Bar (Hiển thị khi chọn chế độ Đóng Dấu Bản Quyền) -->
+                    <div id="inlineWatermarkBar" class="hidden p-3 rounded-xl bg-slate-900/90 border border-pink-500/30 flex flex-wrap items-center justify-between gap-3 text-xs transition-all">
+                        <div class="flex flex-wrap items-center gap-2 flex-1">
+                            <span class="text-pink-400 font-bold flex items-center space-x-1">
+                                <i class="fa-solid fa-stamp"></i>
+                                <span>Chữ đóng dấu:</span>
+                            </span>
+                            <input type="text" id="inlineWmText" placeholder="Ví dụ: @Kenh_Cua_Ban" class="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-white font-mono text-xs focus:outline-none focus:border-pink-500 flex-1 min-w-[180px]" value="@PTH_Media">
+                            <select id="inlineWmPos" class="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-white text-xs">
+                                <option value="bottom_right" selected>Góc Dưới Phải</option>
+                                <option value="top_right">Góc Trên Phải</option>
+                                <option value="bottom_left">Góc Dưới Trái</option>
+                                <option value="top_left">Góc Trên Trái</option>
+                                <option value="center">Chính Giữa</option>
+                            </select>
+                        </div>
+                        <button type="button" onclick="openModal('watermarkModal')" class="text-pink-300 hover:text-white text-[11px] font-semibold underline flex items-center space-x-1">
+                            <i class="fa-solid fa-sliders"></i>
+                            <span>Tùy chỉnh sâu (Logo ảnh/Độ mờ)</span>
+                        </button>
                     </div>
                 </form>
 
@@ -531,6 +561,21 @@
                             <div><strong class="text-blue-300">Cách 2 (Tiện ích):</strong> Dùng tiện ích Chrome <em>"Get cookies.txt LOCALLY"</em> -> Bấm Export -> Copy dán vào ô trên.</div>
                         </div>
                     </details>
+                </div>
+
+                <!-- Auto Watermark Option -->
+                <div class="flex items-center justify-between p-3 rounded-xl bg-slate-800/60 border border-slate-700">
+                    <div>
+                        <div class="font-semibold text-white flex items-center space-x-1.5">
+                            <i class="fa-solid fa-stamp text-pink-400"></i>
+                            <span>Tự Động Đóng Dấu Bản Quyền (Logo/Text)</span>
+                        </div>
+                        <div class="text-[11px] text-slate-400">Tự động gắn tên kênh hoặc logo thương hiệu vào mọi video tải về</div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="settingAutoWatermark" class="sr-only peer">
+                        <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-pink-500"></div>
+                    </label>
                 </div>
 
                 <!-- Anti Duplicate Option -->

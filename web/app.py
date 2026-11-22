@@ -200,13 +200,19 @@ class WatermarkRequest(BaseModel):
 class SettingsRequest(BaseModel):
     auto_clipboard: Optional[bool] = None
     anti_duplicate: Optional[bool] = None
+    auto_watermark: Optional[bool] = None
+    watermark_text: Optional[str] = None
+    watermark_type: Optional[str] = None
+    watermark_position: Optional[str] = None
+    watermark_opacity: Optional[float] = None
+    watermark_font_size: Optional[int] = None
+    watermark_font_color: Optional[str] = None
     download_mode: Optional[str] = None
     target_resolution: Optional[str] = None
     speed_factor: Optional[float] = None
     zoom_factor: Optional[float] = None
     blur_background: Optional[bool] = None
     watermark_enabled: Optional[bool] = None
-    watermark_position: Optional[str] = None
     custom_hashtags: Optional[str] = None
     max_concurrent_downloads: Optional[int] = None
 

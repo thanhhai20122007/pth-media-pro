@@ -9,8 +9,8 @@ from core.database import (
     get_setting,
 )
 from core.downloader import download_video_smart
-from core.processor import apply_anti_duplicate_filter
-from core.config import PROCESSED_DIR
+from core.processor import apply_anti_duplicate_filter, apply_custom_watermark
+from core.config import PROCESSED_DIR, WATERMARKED_DIR
 
 
 class TaskWorker:
@@ -115,16 +115,17 @@ class TaskWorker:
                     raw_path=raw_path
                 )
 
+                current_path = raw_path
+
                 # 2. XỬ LÝ HẬU KỲ CHỐNG TRÙNG LẶP (NẾU ĐƯỢC BẬT HOẶC YÊU CẦU)
                 is_anti_dup = get_setting("anti_duplicate", False) or (format_type == "processed")
-
-                if is_anti_dup and format_type != "audio" and raw_path and os.path.exists(raw_path):
+                if is_anti_dup and format_type != "audio" and current_path and os.path.exists(current_path):
                     update_task_progress(task_id, 50.0, speed="FFmpeg", status="PROCESSING")
                     self.notify_ui("task_progress", {
                         "id": task_id,
                         "session_id": session_id,
                         "progress": 50.0,
-                        "speed": "Đang render",
+                        "speed": "Đang lách 9:16",
                         "status": "PROCESSING"
                     })
 
@@ -134,40 +135,66 @@ class TaskWorker:
                     blur_bg = bool(get_setting("blur_background", True))
 
                     out_processed = os.path.join(PROCESSED_DIR, f"clean_{task_id}.mp4")
-
                     apply_anti_duplicate_filter(
-                        input_path=raw_path,
+                        input_path=current_path,
                         output_path=out_processed,
                         target_resolution=res_setting,
                         speed_factor=speed_setting,
                         zoom_factor=zoom_setting,
                         blur_background=blur_bg
                     )
+                    current_path = out_processed
 
-                    new_size = os.path.getsize(out_processed) if os.path.exists(out_processed) else file_size
-                    update_task(
-                        task_id,
-                        final_path=out_processed,
-                        file_size=new_size,
-                        status="READY",
-                        progress=100.0,
-                        speed="Hoàn tất",
-                        error_log=None
+                # 3. XỬ LÝ ĐÓNG DẤU BẢN QUYỀN (NẾU CHỌN CHẾ ĐỘ HOẶC BẬT TỰ ĐỘNG)
+                is_watermark = (format_type == "watermarked") or bool(get_setting("auto_watermark", False))
+                if is_watermark and format_type != "audio" and current_path and os.path.exists(current_path):
+                    update_task_progress(task_id, 75.0, speed="Đóng dấu", status="PROCESSING")
+                    self.notify_ui("task_progress", {
+                        "id": task_id,
+                        "session_id": session_id,
+                        "progress": 75.0,
+                        "speed": "Đang đóng dấu",
+                        "status": "PROCESSING"
+                    })
+
+                    wm_type = get_setting("watermark_type", "text")
+                    wm_text = get_setting("watermark_text", "@PTH_Media")
+                    wm_pos = get_setting("watermark_position", "bottom_right")
+                    wm_opacity = float(get_setting("watermark_opacity", 0.85))
+                    wm_font_size = int(get_setting("watermark_font_size", 36))
+                    wm_font_color = get_setting("watermark_font_color", "white")
+                    wm_scale = float(get_setting("watermark_scale", 0.20))
+                    wm_img = get_setting("watermark_image_path", None)
+
+                    out_watermarked = os.path.join(WATERMARKED_DIR, f"wm_{task_id}.mp4")
+                    apply_custom_watermark(
+                        input_path=current_path,
+                        output_path=out_watermarked,
+                        watermark_type=wm_type,
+                        watermark_text=wm_text,
+                        watermark_image_path=wm_img,
+                        position=wm_pos,
+                        opacity=wm_opacity,
+                        font_size=wm_font_size,
+                        font_color=wm_font_color,
+                        scale_factor=wm_scale
                     )
-                    print(f"[Worker #{worker_id}] Đã hoàn tất và lách bản quyền Task #{task_id}!")
-                    self.notify_ui("task_done", {"id": task_id, "session_id": session_id, "status": "READY", "final_path": out_processed})
-                else:
-                    # Hoàn tất thông thường (tải nguyên bản không logo)
-                    update_task(
-                        task_id,
-                        final_path=raw_path,
-                        status="DONE",
-                        progress=100.0,
-                        speed="Hoàn tất",
-                        error_log=None
-                    )
-                    print(f"[Worker #{worker_id}] Đã tải hoàn tất Task #{task_id}: {title[:40]}")
-                    self.notify_ui("task_done", {"id": task_id, "session_id": session_id, "status": "DONE", "final_path": raw_path})
+                    current_path = out_watermarked
+
+                # 4. HOÀN TẤT TÁC VỤ
+                final_size = os.path.getsize(current_path) if os.path.exists(current_path) else file_size
+                final_status = "READY" if (is_anti_dup or is_watermark) else "DONE"
+                update_task(
+                    task_id,
+                    final_path=current_path,
+                    file_size=final_size,
+                    status=final_status,
+                    progress=100.0,
+                    speed="Hoàn tất",
+                    error_log=None
+                )
+                print(f"[Worker #{worker_id}] Đã hoàn tất Task #{task_id}: {title[:40]}")
+                self.notify_ui("task_done", {"id": task_id, "session_id": session_id, "status": final_status, "final_path": current_path})
 
             except Exception as e:
                 err_msg = str(e)[:300]

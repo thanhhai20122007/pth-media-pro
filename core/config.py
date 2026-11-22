@@ -22,6 +22,7 @@ DOWNLOADS_DIR = os.path.join(BASE_DIR, "downloads")
 VIDEOS_DIR = os.path.join(DOWNLOADS_DIR, "videos")
 AUDIOS_DIR = os.path.join(DOWNLOADS_DIR, "audios")
 PROCESSED_DIR = os.path.join(DOWNLOADS_DIR, "processed")
+WATERMARKED_DIR = os.path.join(DOWNLOADS_DIR, "watermarked")
 
 DATA_DIR = os.path.join(BASE_DIR, "data")
 RAW_DIR = os.path.join(DATA_DIR, "raw")
@@ -41,6 +42,7 @@ for folder in (
     VIDEOS_DIR,
     AUDIOS_DIR,
     PROCESSED_DIR,
+    WATERMARKED_DIR,
     DATA_DIR,
     RAW_DIR,
     ASSETS_DIR,

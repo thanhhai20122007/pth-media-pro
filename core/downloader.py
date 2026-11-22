@@ -323,8 +323,7 @@ def download_with_ytdlp_engine(
         "socket_timeout": 30,
         "extractor_args": {
             "youtube": {
-                "player_client": ["android", "ios", "mweb"], # Khắc phục triệt để YouTube throttling trên video dài
-                "player_skip": ["configs", "webpage"]
+                "player_client": ["android", "web"]
             }
         },
         "postprocessor_args": {
@@ -817,9 +816,10 @@ def download_video_smart(
                 )
             except Exception as browser_err:
                 b_err = str(browser_err)
+                print(f"[SmartDownloader] Playwright Engine thông báo: {b_err}")
                 if "login" in b_err.lower() or "429" in err_str:
-                    raise Exception("Bài viết này yêu cầu tài khoản. Hãy mở Menu -> chọn [4] Đăng nhập tài khoản để lưu phiên!")
-                raise Exception(f"Lỗi tải: {b_err[:150]}")
+                    raise Exception("Bài viết này yêu cầu tài khoản. Hãy mở Cài đặt (⚙️) và dán Cookie để tải!")
+                # Nếu do thiếu browser binary hoặc lỗi khác, tiếp tục xuống thông báo thân thiện bên dưới
 
         # Thân thiện hóa thông báo lỗi thực tế cho người dùng mọi thiết bị
         has_cookies = os.path.exists(COOKIE_FILE) and os.path.getsize(COOKIE_FILE) > 10
