@@ -10,6 +10,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Ghi lại dấu ấn bản build độc nhất mỗi lần Render build
+RUN date +%s > /app/build_id.txt
+
 # Port 7860 tiêu chuẩn cho Hugging Face Spaces hoặc Cloud Server
 ENV PORT=7860
 EXPOSE 7860

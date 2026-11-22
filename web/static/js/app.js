@@ -119,6 +119,10 @@ function handleWsMessage(payload) {
             loadStats();
             break;
 
+        case 'server_info':
+            handleServerVersion(data);
+            break;
+
         case 'settings_updated':
             // Cài đặt chung
             break;
@@ -128,6 +132,57 @@ function handleWsMessage(payload) {
             break;
     }
 }
+
+// ==================== AUTO UPDATE ENGINE ====================
+let updateDetected = false;
+
+function handleServerVersion(data) {
+    if (!data || !data.build_id) return;
+    const serverBuildId = String(data.build_id).trim();
+    const clientBuildId = String(window.APP_BUILD_ID || '').trim();
+
+    // Nếu chưa khởi tạo hoặc build_id giống hệt nhau thì bỏ qua
+    if (!clientBuildId || clientBuildId.includes('__BUILD_ID__') || serverBuildId === clientBuildId) {
+        return;
+    }
+
+    if (updateDetected) return;
+    updateDetected = true;
+
+    console.log(`[AutoUpdate] Máy chủ vừa build phiên bản mới: ${clientBuildId} -> ${serverBuildId}`);
+
+    const isDownloading = tasksCache.some(t => t.status === 'DOWNLOADING' || t.status === 'PROCESSING');
+    if (!isDownloading) {
+        showToast('🚀 Hệ thống vừa được cập nhật bản mới nhất! Đang tự động làm mới...', 'success');
+        setTimeout(() => {
+            window.location.reload(true);
+        }, 1500);
+    } else {
+        const banner = document.getElementById('updateBanner');
+        if (banner) banner.classList.remove('hidden');
+    }
+}
+
+// Tự động kiểm tra bản cập nhật định kỳ mỗi 45 giây
+setInterval(async () => {
+    try {
+        const res = await fetch('/api/version');
+        if (res.ok) {
+            const data = await res.json();
+            handleServerVersion(data);
+        }
+    } catch (e) {}
+}, 45000);
+
+// Khi người dùng mở lại tab hoặc quay lại màn hình điện thoại
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        fetch('/api/version')
+            .then(res => res.json())
+            .then(handleServerVersion)
+            .catch(() => {});
+    }
+});
 
 // Cập nhật mượt mà thanh tiến trình trực tiếp trong DOM
 function updateTaskProgressInDom(taskId, progress, speed, status) {

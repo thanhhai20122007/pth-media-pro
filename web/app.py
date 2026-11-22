@@ -3,9 +3,10 @@ import re
 import time
 import json
 import asyncio
+import subprocess
 import mimetypes
 from typing import List, Dict, Optional
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks, Header
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -55,6 +56,46 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def get_build_id() -> str:
+    """Tạo hoặc đọc ID bản build để tự động đồng bộ trình duyệt khi có code mới"""
+    build_file = os.path.join(BASE_DIR, "build_id.txt")
+    if os.path.exists(build_file):
+        try:
+            with open(build_file, "r", encoding="utf-8") as f:
+                c = f.read().strip()
+                if c:
+                    return c
+        except Exception:
+            pass
+    try:
+        git_hash = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            stderr=subprocess.DEVNULL,
+            text=True
+        ).strip()
+        if git_hash:
+            return git_hash
+    except Exception:
+        pass
+    return str(int(time.time()))
+
+
+SERVER_BUILD_ID = get_build_id()
+APP_VERSION = "V2.8 PRO"
+
+
+@app.middleware("http")
+async def add_no_cache_headers(request: Request, call_next):
+    """Không lưu cache HTML và dynamic version API để mọi máy và điện thoại luôn cập nhật mới nhất"""
+    response = await call_next(request)
+    path = request.url.path
+    if path == "/" or path.endswith(".html") or path.startswith("/api/version"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
 
 # Thư mục web
 WEB_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -230,6 +271,15 @@ async def websocket_endpoint(websocket: WebSocket, session_id: Optional[str] = "
     sid = session_id or "default"
     await ws_manager.connect(websocket, sid)
     try:
+        # Gửi thông tin phiên bản ngay khi kết nối thành công để client tự động kiểm tra bản cập nhật
+        await websocket.send_text(json.dumps({
+            "event": "server_info",
+            "data": {
+                "version": APP_VERSION,
+                "build_id": SERVER_BUILD_ID,
+                "server_time": int(time.time())
+            }
+        }))
         while True:
             # Nhận ping từ client để giữ kết nối
             data = await websocket.receive_text()
@@ -240,12 +290,32 @@ async def websocket_endpoint(websocket: WebSocket, session_id: Optional[str] = "
 
 
 # ==================== API ENDPOINTS ====================
+@app.get("/api/version")
+async def api_get_version():
+    """API kiểm tra phiên bản bản build để trình duyệt tự động reload khi Render deploy xong"""
+    return {
+        "version": APP_VERSION,
+        "build_id": SERVER_BUILD_ID,
+        "server_time": int(time.time())
+    }
+
+
 @app.get("/", response_class=HTMLResponse)
 async def get_index():
     index_file = os.path.join(TEMPLATES_DIR, "index.html")
     if os.path.exists(index_file):
         with open(index_file, "r", encoding="utf-8") as f:
-            return HTMLResponse(content=f.read())
+            html = f.read()
+        html = html.replace("__BUILD_ID__", SERVER_BUILD_ID)
+        html = html.replace("__APP_VERSION__", APP_VERSION)
+        return HTMLResponse(
+            content=html,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
     return HTMLResponse("<h1>PTH Media Pro - Đang tải giao diện...</h1>")
 
 

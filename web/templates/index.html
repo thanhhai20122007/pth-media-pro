@@ -38,9 +38,20 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=__BUILD_ID__">
 </head>
 <body class="bg-slate-900 text-slate-100 font-sans min-h-screen antialiased flex flex-col">
+
+    <!-- Auto Update Notification Banner (Hiện khi phát hiện phiên bản mới) -->
+    <div id="updateBanner" class="hidden sticky top-0 z-50 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 text-white px-4 py-2 text-xs font-semibold shadow-lg flex items-center justify-between transition-all">
+        <div class="flex items-center space-x-2">
+            <i class="fa-solid fa-arrows-rotate fa-spin text-sm"></i>
+            <span>Đã có phiên bản cập nhật mới trên hệ thống!</span>
+        </div>
+        <button onclick="window.location.reload(true)" class="bg-white text-slate-900 px-3 py-1 rounded-lg text-xs font-bold hover:bg-slate-100 transition shadow">
+            Làm Mới Ngay
+        </button>
+    </div>
 
     <!-- Top Navigation -->
     <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-40">
@@ -52,7 +63,7 @@
                 <div>
                     <div class="flex items-center space-x-2">
                         <span class="font-extrabold text-xl tracking-tight bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 bg-clip-text text-transparent">PTH Media Pro</span>
-                        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase">V2.5 PRO</span>
+                        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase">__APP_VERSION__</span>
                     </div>
                     <p class="text-xs text-slate-400 hidden sm:block">Tải Video Đa Năng Không Logo • Lách Bản Quyền FFmpeg • Tải Song Song</p>
                 </div>
@@ -1079,6 +1090,11 @@
     <!-- Notification Toast Container -->
     <div id="toastContainer" class="fixed bottom-5 right-5 z-50 space-y-2 pointer-events-none"></div>
 
-    <script src="/static/js/app.js?v=2.7.0"></script>
+    <!-- Phiên bản & Mã Build đồng bộ tự động từ Server -->
+    <script>
+        window.APP_BUILD_ID = "__BUILD_ID__";
+        window.APP_VERSION = "__APP_VERSION__";
+    </script>
+    <script src="/static/js/app.js?v=__BUILD_ID__"></script>
 </body>
 </html>
