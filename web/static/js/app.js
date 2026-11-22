@@ -27,6 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadTasks();
     loadStats();
     loadSettings();
+    checkSmartModeStatus();
 
     // Lắng nghe toggle clipboard
     const cbToggle = document.getElementById('clipboardToggle');
@@ -999,9 +1000,66 @@ function formatBytes(bytes, decimals = 1) {
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
+// ==================== KIỂM TRA CHẾ ĐỘ & ĐỒNG BỘ CLOUD - DESKTOP ====================
+async function checkSmartModeStatus() {
+    try {
+        const res = await fetch('/api/tunnel/status');
+        const data = await res.json();
+        const banner = document.getElementById('smartModeBanner');
+        if (!banner) return;
+
+        if (data.is_cloud) {
+            // Mở trên máy chủ Cloud Render
+            if (data.is_node_online && data.tunnel_url) {
+                banner.className = "flex flex-col sm:flex-row items-center justify-between gap-3 bg-gradient-to-r from-emerald-950/80 to-teal-950/80 border border-emerald-500/50 rounded-xl p-3.5 shadow-lg text-emerald-300";
+                banner.innerHTML = `
+                    <div class="flex items-center space-x-2.5 text-xs sm:text-sm">
+                        <span class="flex h-3 w-3 relative">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                        </span>
+                        <div>
+                            <b class="text-white">Máy tính cá nhân của bạn đang ONLINE!</b>
+                            <div class="text-[11px] text-emerald-400">Tải YouTube 4K, video dài, TikTok 100% Không Cần Đăng Nhập / Không Cần Cookie</div>
+                        </div>
+                    </div>
+                    <a href="${data.tunnel_url}" target="_blank" class="w-full sm:w-auto px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition shadow flex items-center justify-center space-x-1.5 active:scale-95">
+                        <i class="fa-solid fa-bolt"></i>
+                        <span>Mở Bản Siêu Tốc Ngay</span>
+                    </a>
+                `;
+                banner.classList.remove('hidden');
+            } else {
+                banner.className = "flex items-center space-x-2.5 bg-slate-900/90 border border-slate-700/80 rounded-xl p-3 text-slate-300 text-xs";
+                banner.innerHTML = `
+                    <i class="fa-solid fa-circle-info text-cyan-400 text-base"></i>
+                    <div>
+                        <span class="text-white font-semibold">Tải TikTok, Facebook Reels, Douyin HD không logo trực tiếp tại đây!</span>
+                        <div class="text-[11px] text-slate-400">💡 Với YouTube: Hãy mở tool trên máy tính bằng file <code class="text-emerald-400 font-bold">run_web.bat</code> rồi bấm <b>"Dùng trên ĐT"</b> để tải không cần tài khoản!</div>
+                    </div>
+                `;
+                banner.classList.remove('hidden');
+            }
+        } else {
+            // Đang mở trên Máy tính hoặc qua Cloudflare Tunnel cá nhân
+            banner.className = "flex items-center justify-between bg-emerald-950/40 border border-emerald-500/30 rounded-xl p-2.5 text-emerald-300 text-xs";
+            banner.innerHTML = `
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-circle-check text-emerald-400 text-sm"></i>
+                    <span><b>Chế độ Siêu Tốc Trực Tiếp:</b> Tải mọi MXH & YouTube 4K/Dài <b>100% Không Cần Đăng Nhập / Không Cần Cookie</b>!</span>
+                </div>
+                <button onclick="openMobileModal()" class="text-[11px] font-bold text-cyan-400 hover:text-cyan-300 underline ml-2 whitespace-nowrap">
+                    <i class="fa-solid fa-mobile-screen mr-1"></i>Dùng trên ĐT
+                </button>
+            `;
+            banner.classList.remove('hidden');
+        }
+    } catch (e) {}
+}
+
 // ==================== MỞ LIÊN KẾT ĐIỆN THOẠI ====================
 async function openMobileModal() {
-    let finalUrl = `http://192.168.1.10:5000`;
+    let finalUrl = window.location.origin;
     try {
         const res = await fetch('/api/tunnel');
         const data = await res.json();

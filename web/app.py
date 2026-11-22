@@ -939,10 +939,53 @@ async def api_get_stats(session_id: Optional[str] = None):
     return get_stats(session_id=session_id)
 
 
+_REGISTERED_TUNNEL_URL: Optional[str] = None
+_REGISTERED_TUNNEL_TIME: float = 0.0
+
+
+@app.post("/api/tunnel/register")
+async def api_register_tunnel(req: Request):
+    """API để máy tính cá nhân tự động báo cáo link Tunnel lên server Cloud Render"""
+    global _REGISTERED_TUNNEL_URL, _REGISTERED_TUNNEL_TIME
+    try:
+        body = await req.json()
+        t_url = (body.get("tunnel_url") or "").strip()
+        if t_url.startswith("http"):
+            _REGISTERED_TUNNEL_URL = t_url
+            _REGISTERED_TUNNEL_TIME = time.time()
+            return {"status": "ok", "tunnel_url": _REGISTERED_TUNNEL_URL}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
+    return {"status": "error", "detail": "Invalid url"}
+
+
+@app.get("/api/tunnel/status")
+async def api_tunnel_status():
+    """Kiểm tra xem máy tính cá nhân có đang online Tunnel không để web Cloud tự động hướng dẫn"""
+    global _REGISTERED_TUNNEL_URL, _REGISTERED_TUNNEL_TIME
+    from core.tunnel import get_public_tunnel_url
+    local_tunnel = get_public_tunnel_url()
+    is_cloud = bool(os.environ.get("PORT") and sys.platform != "win32")
+
+    has_active_remote = bool(_REGISTERED_TUNNEL_URL and (time.time() - _REGISTERED_TUNNEL_TIME < 600))
+    effective_url = local_tunnel or (_REGISTERED_TUNNEL_URL if has_active_remote else None)
+
+    return {
+        "is_cloud": is_cloud,
+        "is_node_online": bool(local_tunnel or has_active_remote),
+        "tunnel_url": effective_url,
+        "mode": "cloud" if is_cloud else "desktop"
+    }
+
+
 @app.get("/api/tunnel")
 async def api_get_tunnel():
+    global _REGISTERED_TUNNEL_URL, _REGISTERED_TUNNEL_TIME
     from core.tunnel import get_public_tunnel_url
-    return {"public_url": get_public_tunnel_url()}
+    local_tunnel = get_public_tunnel_url()
+    has_active_remote = bool(_REGISTERED_TUNNEL_URL and (time.time() - _REGISTERED_TUNNEL_TIME < 600))
+    final_url = local_tunnel or (_REGISTERED_TUNNEL_URL if has_active_remote else None)
+    return {"public_url": final_url}
 
 
 @app.get("/api/settings")

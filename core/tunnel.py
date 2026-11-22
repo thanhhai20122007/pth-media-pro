@@ -53,11 +53,37 @@ def start_tunnel(port: int = 5000) -> Optional[str]:
         if m:
             _PUBLIC_URL = m.group(0)
             print(f"[CloudflareTunnel] 🌐 Link Public Toàn Cầu: {_PUBLIC_URL}")
+
+            # Lưu link ra file để tiện tra cứu hoặc hiển thị
+            try:
+                os.makedirs(os.path.join(os.path.dirname(BIN_DIR), "data"), exist_ok=True)
+                with open(os.path.join(os.path.dirname(BIN_DIR), "data", "public_tunnel.txt"), "w", encoding="utf-8") as f:
+                    f.write(_PUBLIC_URL)
+            except Exception:
+                pass
+
             # Khởi động luồng đọc nền để tránh đầy buffer
             def drain_pipe(proc):
                 while proc.poll() is None:
                     proc.stdout.readline()
             threading.Thread(target=drain_pipe, args=(_TUNNEL_PROC,), daemon=True).start()
+
+            # Luồng đồng bộ Heartbeat lên Cloud Render để điện thoại mở pth-media-pro.onrender.com tự nhận diện máy tính
+            def sync_to_cloud(tunnel_url: str):
+                import requests
+                while True:
+                    try:
+                        requests.post(
+                            "https://pth-media-pro.onrender.com/api/tunnel/register",
+                            json={"tunnel_url": tunnel_url},
+                            timeout=10
+                        )
+                    except Exception:
+                        pass
+                    time.sleep(120)  # Cứ 2 phút gửi heartbeat 1 lần
+
+            threading.Thread(target=sync_to_cloud, args=(_PUBLIC_URL,), daemon=True).start()
+
             return _PUBLIC_URL
 
     return _PUBLIC_URL

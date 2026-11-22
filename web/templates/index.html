@@ -94,16 +94,16 @@
                     <span>Thư mục tải về</span>
                 </button>
 
-                <!-- Mobile Connect Button (Desktop only) -->
-                <button onclick="openMobileModal()" class="hidden sm:flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-3 py-1.5 rounded-xl text-xs font-semibold transition shadow-sm" title="Mở trên Điện Thoại (Cùng Wi-Fi)">
+                <!-- Mobile Connect Button -->
+                <button onclick="openMobileModal()" class="flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-3 py-1.5 rounded-xl text-xs font-semibold transition shadow-sm" title="Mở trên Điện Thoại (4G/5G & Wi-Fi Không cần tài khoản)">
                     <i class="fa-solid fa-mobile-screen text-cyan-400"></i>
                     <span>Dùng trên ĐT</span>
                 </button>
 
-                <!-- Login Session & Cookie Button -->
-                <button onclick="triggerLoginSession()" class="flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold transition shadow-sm" title="Quản lý Cookie & Đăng nhập tài khoản (Facebook Story, TikTok, Threads, Insta)">
-                    <i class="fa-solid fa-key text-emerald-400"></i>
-                    <span>Đăng nhập MXH</span>
+                <!-- Login Session & Cookie Button (Optional) -->
+                <button onclick="triggerLoginSession()" class="flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-semibold transition shadow-sm" title="Chỉ dùng khi muốn tải Story Facebook/Instagram bạn bè riêng tư. Tải video công khai KHÔNG CẦN đăng nhập!">
+                    <i class="fa-solid fa-key text-slate-400"></i>
+                    <span class="text-slate-300">Cookie (Tùy chọn)</span>
                 </button>
 
                 <!-- Settings Button -->
@@ -125,8 +125,11 @@
             <div class="relative z-10 space-y-4">
                 <div class="text-center sm:text-left space-y-1">
                     <h1 class="text-2xl sm:text-3xl font-extrabold text-white">Dán Link Video Để Tải Ngay Lập Tức</h1>
-                    <p class="text-sm text-slate-400">Tự động xóa logo TikTok & Douyin, tải video HD từ Facebook, YouTube, Instagram, Threads, X...</p>
+                    <p class="text-sm text-slate-400">Tự động xóa logo TikTok & Douyin, tải video HD từ Facebook, YouTube, Instagram, Threads, X... (100% Không cần đăng nhập)</p>
                 </div>
+
+                <!-- Smart Mode & Cloud-to-Desktop Direct Banner -->
+                <div id="smartModeBanner" class="hidden rounded-xl p-3 border transition-all duration-300"></div>
 
                 <!-- Input Form -->
                 <form id="downloadForm" onsubmit="handleDownloadSubmit(event)" class="space-y-3">
@@ -441,27 +444,42 @@
 
     <!-- ==================== MODAL: MOBILE CONNECT ==================== -->
     <div id="mobileModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-2xl text-center">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl text-center">
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                 <div class="flex items-center space-x-2">
                     <i class="fa-solid fa-mobile-screen-button text-cyan-400 text-lg"></i>
-                    <h3 class="font-bold text-white text-base">Kết Nối Với Điện Thoại</h3>
+                    <h3 class="font-bold text-white text-base">Mở Trên Điện Thoại (Siêu Tốc)</h3>
                 </div>
                 <button onclick="closeModal('mobileModal')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
             </div>
-            <p class="text-xs text-slate-400">Kết nối điện thoại vào <b>cùng mạng Wi-Fi</b> với máy tính rồi mở liên kết bên dưới hoặc quét mã QR:</p>
             
+            <div class="bg-emerald-950/50 border border-emerald-500/30 rounded-xl p-3 text-left space-y-1">
+                <div class="flex items-center space-x-2 text-emerald-400 font-bold text-xs">
+                    <i class="fa-solid fa-shield-halved"></i>
+                    <span>TẢI KHÔNG CẦN ĐĂNG NHẬP HAY COOKIE</span>
+                </div>
+                <p class="text-[11px] text-slate-300">Dùng IP gia đình của máy tính bạn (Viettel/VNPT/FPT) để tải YouTube 4K, video dài, TikTok, Reels mà không bao giờ bị chặn!</p>
+            </div>
+
             <div class="flex justify-center p-3 bg-white rounded-xl mx-auto w-44 h-44 items-center shadow-lg">
                 <img id="mobileQrImg" src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=http://192.168.1.10:5000" alt="QR Code" class="w-full h-full object-contain">
             </div>
 
-            <div class="bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-emerald-400 font-mono text-sm font-bold select-all break-all cursor-pointer" onclick="copyMobileUrl()" title="Click để copy">
-                <span id="mobileUrlText">http://192.168.1.10:5000</span>
+            <div class="space-y-1">
+                <div class="text-[11px] text-slate-400 font-medium">Link mở từ mọi nơi (4G, 5G, Wi-Fi):</div>
+                <div class="bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-emerald-400 font-mono text-xs font-bold select-all break-all cursor-pointer hover:border-emerald-500 transition flex items-center justify-between" onclick="copyMobileUrl()" title="Click để copy">
+                    <span id="mobileUrlText" class="truncate mr-2">Đang lấy link...</span>
+                    <i class="fa-regular fa-copy text-sm text-slate-400"></i>
+                </div>
             </div>
 
-            <p class="text-[11px] text-slate-500">💡 Mẹo: Nhấp đúp vào <code>CHAY_NGAM_PTH_MEDIA.vbs</code> để tắt CMD mà điện thoại vẫn tải mượt mà!</p>
-
-            <button onclick="closeModal('mobileModal')" class="w-full py-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold">Đóng</button>
+            <div class="flex gap-2">
+                <button onclick="copyMobileUrl()" class="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center justify-center space-x-1.5 shadow-md">
+                    <i class="fa-regular fa-copy"></i>
+                    <span>Sao Chép Link ĐT</span>
+                </button>
+                <button onclick="closeModal('mobileModal')" class="py-2 px-4 rounded-xl bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold">Đóng</button>
+            </div>
         </div>
     </div>
 

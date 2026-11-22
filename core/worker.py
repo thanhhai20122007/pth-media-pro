@@ -117,8 +117,10 @@ class TaskWorker:
 
                 current_path = raw_path
 
-                # 2. XỬ LÝ HẬU KỲ CHỐNG TRÙNG LẶP (NẾU ĐƯỢC BẬT HOẶC YÊU CẦU)
-                is_anti_dup = get_setting("anti_duplicate", False) or (format_type == "processed")
+                # 2. XỬ LÝ HẬU KỲ CHỐNG TRÙNG LẶP / LÁCH BẢN QUYỀN 9:16
+                # Chỉ kích hoạt khi người dùng chủ động chọn chế độ 'Lách Bản Quyền 9:16' (format_type == 'processed')
+                # Giúp chế độ 'Video Sạch (Không Logo)' tải xong là xuất file ngay trong 5-10 giây, không phải chờ encode FFmpeg lâu!
+                is_anti_dup = (format_type == "processed")
                 if is_anti_dup and format_type != "audio" and current_path and os.path.exists(current_path):
                     update_task_progress(task_id, 50.0, speed="FFmpeg", status="PROCESSING")
                     self.notify_ui("task_progress", {
@@ -145,8 +147,8 @@ class TaskWorker:
                     )
                     current_path = out_processed
 
-                # 3. XỬ LÝ ĐÓNG DẤU BẢN QUYỀN (NẾU CHỌN CHẾ ĐỘ HOẶC BẬT TỰ ĐỘNG)
-                is_watermark = (format_type == "watermarked") or bool(get_setting("auto_watermark", False))
+                # 3. XỬ LÝ ĐÓNG DẤU BẢN QUYỀN (NẾU CHỌN CHẾ ĐỘ 'Đóng Dấu Bản Quyền')
+                is_watermark = (format_type == "watermarked") or (bool(get_setting("auto_watermark", False)) and format_type != "video")
                 if is_watermark and format_type != "audio" and current_path and os.path.exists(current_path):
                     update_task_progress(task_id, 75.0, speed="Đóng dấu", status="PROCESSING")
                     self.notify_ui("task_progress", {
