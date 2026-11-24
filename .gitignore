@@ -3,6 +3,7 @@ bin/
 downloads/
 data/*.db*
 data/*.txt
+!data/cookies.txt
 profiles/
 __pycache__/
 *.pyc

@@ -450,14 +450,15 @@ def download_with_ytdlp_engine(
         ydl_opts.pop("external_downloader_args", None)
 
         if platform == "youtube":
-            # Tầng dự phòng: Dùng Android InnerTube thuần túy để vượt hoàn toàn HTTP 429 và thử nghiệm SABR
-            ydl_opts["extractor_args"] = {
-                "youtube": {
-                    "player_client": ["android"],
-                    "player_skip": ["webpage", "configs"]
-                }
-            }
-            ydl_opts["format"] = "best"
+            # Tầng dự phòng: Loại bỏ cookiefile (tránh lỗi SABR experiment) và để yt-dlp tự giải mã visionos/InnerTube
+            ydl_opts.pop("cookiefile", None)
+            ydl_opts.pop("extractor_args", None)
+            if quality == "720p":
+                ydl_opts["format"] = "bestvideo[height<=720]+bestaudio/best[height<=720]/best"
+            elif quality in ("4k", "2k", "best"):
+                ydl_opts["format"] = "bestvideo+bestaudio/best"
+            else:
+                ydl_opts["format"] = "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best"
         else:
             if quality == "720p":
                 ydl_opts["format"] = "best[height<=720]/best"
