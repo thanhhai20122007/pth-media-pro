@@ -417,10 +417,11 @@ def download_with_ytdlp_engine(
                 ydl_opts["format"] = "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]/best"
         ydl_opts["merge_output_format"] = "mp4"
 
-    # Kiểm tra cookie: Chỉ nạp cookiefile cho các nền tảng cần phiên đăng nhập (Facebook Story, Instagram, TikTok private...)
-    # Tuyệt đối KHÔNG nạp cookie YouTube tĩnh mặc định vì Google xoay vòng token liên tục (__Secure-1PSIDTS),
-    # nếu gửi cookie cũ từ IP Cloud sẽ kích hoạt YouTube Bot Challenge (HTTP 429).
-    if platform != "youtube":
+    # Kiểm tra cookie: Chỉ nạp cookiefile cho các nền tảng cần phiên đăng nhập (Instagram, Threads, TikTok private...)
+    # Tuyệt đối KHÔNG nạp cookie mặc định cho YouTube và Facebook công khai vì:
+    # 1. YouTube xoay vòng __Secure-1PSIDTS liên tục gây lỗi 429 Bot Challenge.
+    # 2. Facebook có thể bị kích hoạt Checkpoint nếu cookie đăng nhập từ IP Cloud khác vị trí, làm hỏng cả video Reels công khai!
+    if platform not in ("youtube", "facebook"):
         if os.path.exists(COOKIE_FILE) and os.path.getsize(COOKIE_FILE) > 10:
             ydl_opts["cookiefile"] = COOKIE_FILE
 
@@ -434,9 +435,9 @@ def download_with_ytdlp_engine(
         ydl_opts.pop("external_downloader", None)
         ydl_opts.pop("external_downloader_args", None)
 
-        if platform == "youtube":
-            # Nếu gặp lỗi yêu cầu đăng nhập (giới hạn độ tuổi / video riêng tư), thử lại với cookie
-            if os.path.exists(COOKIE_FILE) and os.path.getsize(COOKIE_FILE) > 10 and any(w in str(first_err).lower() for w in ("login", "sign in", "age", "confirm your age")):
+        if platform in ("youtube", "facebook"):
+            # Nếu gặp lỗi yêu cầu đăng nhập (video riêng tư / giới hạn đối tượng / tuổi), thử lại với cookie
+            if os.path.exists(COOKIE_FILE) and os.path.getsize(COOKIE_FILE) > 10 and any(w in str(first_err).lower() for w in ("login", "sign in", "private", "age", "confirm your age")):
                 ydl_opts["cookiefile"] = COOKIE_FILE
             else:
                 ydl_opts.pop("cookiefile", None)
@@ -673,6 +674,8 @@ def download_facebook_story_engine(
         final_url = resp.url
         if "login" in final_url.lower():
             raise Exception("Cookie Facebook hiện tại không hợp lệ hoặc đã hết hạn đăng nhập. Vui lòng cập nhật Cookie mới trong Cài đặt (⚙️)!")
+        if "checkpoint" in final_url.lower():
+            raise Exception("Tài khoản Facebook của bạn đang bị Facebook yêu cầu xác minh bảo mật (Checkpoint). Bạn hãy mở ứng dụng Facebook trên điện thoại xác nhận 'Đây là tôi', hoặc mở file run_web.bat trên máy tính để web tự tải bằng mạng nhà không bị Checkpoint!")
 
         html = resp.text
 
@@ -848,6 +851,9 @@ def download_facebook_story_engine(
         except Exception as ey:
             last_ytdl_err = ey
 
+    if last_ytdl_err and "checkpoint" in str(last_ytdl_err).lower():
+        raise Exception("Tài khoản Facebook của bạn đang bị Facebook yêu cầu xác minh bảo mật (Checkpoint). Bạn hãy mở ứng dụng Facebook trên điện thoại xác nhận 'Đây là tôi', hoặc mở file run_web.bat trên máy tính để web tự tải bằng mạng nhà không bị Checkpoint!")
+
     raise Exception("Không thể tải Story Facebook này. Cookie hiện tại có thể đã hết hạn hoặc Story được chia sẻ trong danh sách hạn chế/Bạn bè riêng tư.")
 
 
@@ -967,19 +973,12 @@ def download_video_smart(
 
     print(f"[SmartDownloader] Bắt đầu tải Task #{task_id} | Platform: {platform} | Quality: {quality} | URL: {cleaned_url}")
 
-    # 1. NỀN TẢNG FACEBOOK STORY: Ưu tiên Engine chuyên dụng giải mã Story
-    if platform == "facebook" and ("/stories/" in cleaned_url.lower() or "story.php" in cleaned_url.lower()):
-        return download_facebook_story_engine(
-            cleaned_url,
-            task_id=task_id,
-            format_type=format_type,
-            quality=quality,
-            progress_callback=progress_callback,
-        )
-
-    # 2. CẦU NỐI TĂNG TỐC CHO YOUTUBE TRÊN CLOUD RENDER
+    # 1. CẦU NỐI HYBRID CLOUD-TO-DESKTOP (YOUTUBE, FACEBOOK, INSTAGRAM, THREADS):
+    # Khi chạy trên Cloud Render, nếu Node Máy Tính gia đình đang trực tuyến (chạy file run_web.bat):
+    # Tự động ủy thác tác vụ cho Máy Tính xử lý bằng IP dân dụng Việt Nam,
+    # hoàn toàn miễn nhiễm với Facebook Checkpoint hay YouTube 429!
     is_cloud_env = bool(os.environ.get("PORT") and sys.platform != "win32")
-    if platform == "youtube" and is_cloud_env:
+    if is_cloud_env:
         from core.tunnel import get_remote_tunnel_url
         remote_tunnel = get_remote_tunnel_url()
         if remote_tunnel:
@@ -994,7 +993,17 @@ def download_video_smart(
                     progress_callback=progress_callback,
                 )
             except Exception as h_err:
-                print(f"[SmartDownloader] Node máy tính gặp lỗi ({h_err}). Chuyển sang tải trực tiếp...")
+                print(f"[SmartDownloader] Node máy tính không phản hồi ({h_err}). Chuyển sang tải trực tiếp trên Cloud...")
+
+    # 2. NỀN TẢNG FACEBOOK STORY: Ưu tiên Engine chuyên dụng giải mã Story
+    if platform == "facebook" and ("/stories/" in cleaned_url.lower() or "story.php" in cleaned_url.lower()):
+        return download_facebook_story_engine(
+            cleaned_url,
+            task_id=task_id,
+            format_type=format_type,
+            quality=quality,
+            progress_callback=progress_callback,
+        )
 
     # 3. NỀN TẢNG THREADS: Ưu tiên Engine chuyên dụng vượt chặn HTTP 429
     if platform == "threads":
@@ -1075,7 +1084,11 @@ def download_video_smart(
             if not has_cookies:
                 raise Exception("Story Facebook luôn yêu cầu quyền xem. Vui lòng vào Cài đặt (⚙️) ở góc trên và dán Cookie Facebook (c_user, xs...) để tải Story mượt mà!")
             else:
+                if "checkpoint" in err_str.lower():
+                    raise Exception("Tài khoản Facebook của Cookie đang bị Facebook yêu cầu xác minh danh tính (Checkpoint). Hãy mở Facebook trên điện thoại xác nhận 'Đây là tôi', hoặc mở file run_web.bat trên máy tính để web tự tải qua mạng nhà không bị Checkpoint!")
                 raise Exception("Không thể xem Story này. Cookie Facebook có thể đã hết hạn hoặc bạn không nằm trong danh sách được xem Story.")
+        elif platform == "facebook" and "checkpoint" in err_str.lower():
+            raise Exception("Tài khoản Facebook của Cookie đang bị Facebook yêu cầu xác minh danh tính (Checkpoint). Hãy mở Facebook trên điện thoại xác nhận 'Đây là tôi', hoặc mở file run_web.bat trên máy tính để web tự tải qua mạng nhà không bị Checkpoint!")
         elif "instagram.com/stories" in cleaned_url.lower():
             if not has_cookies:
                 raise Exception("Story Instagram yêu cầu quyền xem. Vui lòng vào Cài đặt (⚙️) và dán Cookie Instagram để tải!")
