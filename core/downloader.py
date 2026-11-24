@@ -688,8 +688,15 @@ def download_facebook_story_engine(
 
         html = resp.text
 
+        def clean_meta_cdn_url(raw_u: str) -> str:
+            u = raw_u.replace(r'\/', '/').replace(r'\u0026', '&').replace('&amp;', '&')
+            u = re.split(r'\\u003[cC]|<|"|\'|&quot;|&lt;', u)[0]
+            return u.strip()
+
         # Quét tìm luồng video stream MP4 từ Meta CDN trong nội dung HTML/JSON
-        video_urls = []
+        candidate_videos = []
+        candidate_audios = []
+
         hd_matches = re.findall(r'playable_url_quality_hd["\:\s]+(https?://[^"\s\\]+)', html)
         if not hd_matches:
             hd_matches = re.findall(r'browser_native_hd_url["\:\s]+(https?://[^"\s\\]+)', html)
@@ -697,43 +704,111 @@ def download_facebook_story_engine(
         if not sd_matches:
             sd_matches = re.findall(r'browser_native_sd_url["\:\s]+(https?://[^"\s\\]+)', html)
 
-        if hd_matches:
-            video_urls.extend(hd_matches)
-        if sd_matches:
-            video_urls.extend(sd_matches)
+        for m in (hd_matches + sd_matches):
+            candidate_videos.append(clean_meta_cdn_url(m))
 
-        # Quét dự phòng tất cả link video fbcdn.net
-        if not video_urls:
-            fbcdn_videos = re.findall(r'https?:[\\/]+[a-zA-Z0-9.-]+\.fbcdn\.net[\\/][^"\'\s<>]+\.mp4[^"\'\s<>]*', html)
-            for fv in fbcdn_videos:
-                clean_fv = fv.replace(r'\/', '/').replace('\\u0026', '&').replace('&amp;', '&')
-                if clean_fv not in video_urls:
-                    video_urls.append(clean_fv)
+        fbcdn_videos = re.findall(r'https?:[\\/]+[a-zA-Z0-9.-]+\.fbcdn\.net[\\/][^"\'\s<>]+\.mp4[^"\'\s<>]*', html)
+        for fv in fbcdn_videos:
+            c = clean_meta_cdn_url(fv)
+            if "audio" in c:
+                if c not in candidate_audios:
+                    candidate_audios.append(c)
+            else:
+                if c not in candidate_videos:
+                    candidate_videos.append(c)
 
-        if video_urls:
-            target_stream = video_urls[0].replace(r'\/', '/').replace('\\u0026', '&').replace('&amp;', '&')
+        # Ưu tiên các luồng chất lượng cao h264/1080p/720p
+        candidate_videos.sort(key=lambda x: (
+            0 if "1080p" in x or "dash_h264" in x else (
+                1 if "720p" in x else 2
+            )
+        ))
+
+        title_match = re.search(r'<title>(.*?)</title>', html)
+        raw_title = title_match.group(1).replace(" | Facebook", "").strip() if title_match else f"Story_{user_id or task_id}"
+        clean_title = sanitize_filename(raw_title)
+
+        out_dir = VIDEOS_DIR if format_type == "video" else AUDIOS_DIR
+        out_file = os.path.join(out_dir, f"video_{task_id}_{clean_title[:30]}.mp4")
+
+        # Thử tải luồng video hợp lệ
+        success_video = False
+        temp_v = os.path.join(out_dir, f"temp_v_{task_id}.mp4")
+        temp_a = os.path.join(out_dir, f"temp_a_{task_id}.mp4")
+
+        for target_stream in candidate_videos:
+            try:
+                v_resp = session.get(target_stream, stream=True, timeout=30)
+                cl = int(v_resp.headers.get('content-length', 0))
+                # Phải là mã 200 và lớn hơn 100 KB
+                if v_resp.status_code == 200 and (cl > 100000 or cl == 0):
+                    downloaded = 0
+                    with open(temp_v, "wb") as vf:
+                        for chunk in v_resp.iter_content(chunk_size=1024 * 256):
+                            if chunk:
+                                vf.write(chunk)
+                                downloaded += len(chunk)
+                                if cl > 0 and progress_callback:
+                                    pct = 40.0 + (downloaded / cl * 45.0)
+                                    progress_callback(min(pct, 85.0), f"{downloaded / (1024*1024):.1f} MB")
+                    
+                    if os.path.exists(temp_v) and os.path.getsize(temp_v) > 50000:
+                        success_video = True
+                        break
+                    else:
+                        if os.path.exists(temp_v):
+                            os.remove(temp_v)
+            except Exception:
+                if os.path.exists(temp_v):
+                    try:
+                        os.remove(temp_v)
+                    except Exception:
+                        pass
+
+        if success_video:
             if progress_callback:
-                progress_callback(50.0, "Bắt đầu tải trực tiếp video Story...")
+                progress_callback(90.0, "Kiểm tra âm thanh Story...")
 
-            # Bóc tách tiêu đề/tên người đăng
-            title_match = re.search(r'<title>(.*?)</title>', html)
-            raw_title = title_match.group(1).replace(" | Facebook", "").strip() if title_match else f"Story_{user_id or task_id}"
-            clean_title = sanitize_filename(raw_title)
+            # Kiểm tra xem video đã có âm thanh chưa
+            has_audio = False
+            try:
+                chk_cmd = [FFPROBE_EXE, "-v", "error", "-select_streams", "a", "-show_entries", "stream=codec_type", "-of", "csv=p=0", temp_v]
+                a_chk = subprocess.check_output(chk_cmd).decode().strip()
+                if "audio" in a_chk:
+                    has_audio = True
+            except Exception:
+                pass
 
-            out_dir = VIDEOS_DIR if format_type == "video" else AUDIOS_DIR
-            out_file = os.path.join(out_dir, f"video_{task_id}_{clean_title[:30]}.mp4")
+            # Nếu chưa có âm thanh và có candidate audio, tải và ghép
+            if not has_audio and candidate_audios:
+                for a_stream in candidate_audios:
+                    try:
+                        a_resp = session.get(a_stream, stream=True, timeout=20)
+                        if a_resp.status_code == 200:
+                            with open(temp_a, "wb") as af:
+                                for chunk in a_resp.iter_content(chunk_size=1024 * 128):
+                                    if chunk:
+                                        af.write(chunk)
+                            if os.path.exists(temp_a) and os.path.getsize(temp_a) > 5000:
+                                cmd_merge = [FFMPEG_EXE, "-y", "-i", temp_v, "-i", temp_a, "-c:v", "copy", "-c:a", "aac", out_file]
+                                subprocess.run(cmd_merge, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                break
+                    except Exception:
+                        pass
 
-            v_resp = session.get(target_stream, stream=True, timeout=30)
-            total_size = int(v_resp.headers.get('content-length', 0))
-            downloaded = 0
-            with open(out_file, "wb") as vf:
-                for chunk in v_resp.iter_content(chunk_size=1024 * 256):
-                    if chunk:
-                        vf.write(chunk)
-                        downloaded += len(chunk)
-                        if total_size > 0 and progress_callback:
-                            pct = 50.0 + (downloaded / total_size * 48.0)
-                            progress_callback(min(pct, 98.0), f"{downloaded / (1024*1024):.1f} MB")
+            if not os.path.exists(out_file) or os.path.getsize(out_file) < 50000:
+                # Video đã có sẵn âm thanh hoặc không cần ghép thêm
+                if os.path.exists(out_file):
+                    os.remove(out_file)
+                os.rename(temp_v, out_file)
+
+            # Dọn dẹp tệp tạm
+            for t_f in (temp_v, temp_a):
+                if os.path.exists(t_f):
+                    try:
+                        os.remove(t_f)
+                    except Exception:
+                        pass
 
             if format_type == "audio":
                 audio_file = os.path.join(AUDIOS_DIR, f"audio_{task_id}_{clean_title[:30]}.mp3")
