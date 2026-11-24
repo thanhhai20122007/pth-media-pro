@@ -330,7 +330,7 @@ async function saveCookies() {
         });
         const data = await res.json();
         if (res.ok) {
-            showToast('✅ Đã lưu và kích hoạt Cookie thành công!', 'success');
+            showToast(data.message || '✅ Đã lưu và kích hoạt Cookie thành công!', 'success');
             input.value = '';
             await loadCookieStatus();
         } else {

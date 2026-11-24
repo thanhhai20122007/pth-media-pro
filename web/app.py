@@ -1064,18 +1064,41 @@ async def api_save_cookies(req: CookieRequest):
     if not raw:
         raise HTTPException(status_code=400, detail="Nội dung cookie không được để trống")
 
-    expires = int(time.time()) + 60 * 86400  # 60 ngày
-    lines = [
-        "# Netscape HTTP Cookie File",
-        "# Saved by PTH Media Pro Cookie Manager",
-        ""
-    ]
+    # Đọc cookies hiện có để gộp (không ghi đè mất cookies mạng xã hội khác)
+    cookies_map = {}
+    if os.path.exists(COOKIE_FILE):
+        try:
+            with open(COOKIE_FILE, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    parts = line.split("\t")
+                    if len(parts) >= 7:
+                        cookies_map[(parts[0], parts[2], parts[5])] = (parts[1], parts[3], parts[4], parts[6])
+        except Exception:
+            pass
 
-    # Kiểm tra nếu người dùng dán toàn bộ file Netscape
+    # Xử lý nội dung mới
     if "# Netscape" in raw or "\t" in raw:
-        content = raw.strip() + "\n"
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split("\t")
+            if len(parts) >= 7:
+                cookies_map[(parts[0], parts[2], parts[5])] = (parts[1], parts[3], parts[4], parts[6])
     else:
-        # Chuỗi raw cookie: 'c_user=...; xs=...; datr=...'
+        # Chuỗi raw cookie: 'c_user=...; xs=...; datr=...' hoặc 'LOGIN_INFO=...'
+        expires = int(time.time()) + 90 * 86400  # 90 ngày
+        domains = [".facebook.com", ".instagram.com"]
+        if any(k in raw for k in ("LOGIN_INFO", "VISITOR_INFO1_LIVE", "SAPISID", "SSID", "APISID", "PREF")):
+            domains = [".youtube.com", ".google.com"]
+        elif "sessionid" in raw:
+            domains = [".tiktok.com"]
+        elif "auth_token" in raw or "ct0" in raw:
+            domains = [".x.com", ".twitter.com"]
+
         pairs = raw.split(";")
         for pair in pairs:
             pair = pair.strip()
@@ -1086,15 +1109,32 @@ async def api_save_cookies(req: CookieRequest):
             val = val.strip()
             if not name:
                 continue
-            # Tự động gán cho .facebook.com và .instagram.com
-            lines.append(f".facebook.com\tTRUE\t/\tTRUE\t{expires}\t{name}\t{val}")
-            lines.append(f".instagram.com\tTRUE\t/\tTRUE\t{expires}\t{name}\t{val}")
-        content = "\n".join(lines) + "\n"
+            for d in domains:
+                cookies_map[(d, "/", name)] = ("TRUE", "TRUE", str(expires), val)
+
+    lines = [
+        "# Netscape HTTP Cookie File",
+        "# Saved & Merged by PTH Media Pro Cookie Manager",
+        ""
+    ]
+    all_domains = set()
+    for (d, p, n), (flag, sec, exp, val) in cookies_map.items():
+        lines.append(f"{d}\t{flag}\t{p}\t{sec}\t{exp}\t{n}\t{val}")
+        cleaned_domain = d.lstrip(".")
+        if cleaned_domain:
+            all_domains.add(cleaned_domain)
+
+    content = "\n".join(lines) + "\n"
 
     try:
         with open(COOKIE_FILE, "w", encoding="utf-8") as f:
             f.write(content)
-        return {"status": "success", "message": "Đã lưu và kích hoạt Cookie thành công!"}
+        domain_list = ", ".join(sorted(all_domains))
+        return {
+            "status": "success",
+            "message": f"Đã lưu & gộp Cookie thành công! Đang hỗ trợ: {domain_list}",
+            "domains": list(all_domains)
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi khi lưu file cookie: {str(e)}")
 

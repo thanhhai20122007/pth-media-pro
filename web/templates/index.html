@@ -545,12 +545,17 @@
             </div>
 
             <div class="space-y-4 text-xs">
-                <!-- Facebook & Social Media Cookie Manager -->
+                <!-- Multi-Platform Social Media Cookie Manager -->
                 <div class="p-3.5 rounded-xl bg-slate-800/80 border border-slate-700/80 space-y-2.5">
                     <div class="flex items-center justify-between">
                         <div class="flex items-center space-x-2">
-                            <i class="fa-brands fa-facebook text-blue-400 text-sm"></i>
-                            <span class="font-bold text-white text-xs">Cookie Đăng Nhập (Story FB & Bài Riêng Tư)</span>
+                            <div class="flex items-center -space-x-1">
+                                <i class="fa-brands fa-youtube text-red-500 text-sm"></i>
+                                <i class="fa-brands fa-facebook text-blue-400 text-sm"></i>
+                                <i class="fa-brands fa-tiktok text-pink-400 text-sm"></i>
+                                <i class="fa-brands fa-instagram text-amber-400 text-sm"></i>
+                            </div>
+                            <span class="font-bold text-white text-xs">Quản Lý Cookie Đa Mạng Xã Hội</span>
                         </div>
                         <div class="flex items-center space-x-1.5">
                             <button type="button" onclick="pasteCookieFromClipboard()" class="text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold flex items-center space-x-1 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20" title="Dán nhanh cookie từ Clipboard">
@@ -563,18 +568,18 @@
                         </div>
                     </div>
                     <p class="text-[11px] text-slate-400 leading-relaxed">
-                        Facebook & Instagram bắt buộc đăng nhập để xem <span class="text-blue-300 font-semibold">Story 24h</span> hoặc bài bạn bè. Dán cookie tại đây để hệ thống tự động tải Story mượt mà không lo bị chặn!
+                        Dùng khi tải <span class="text-blue-300 font-semibold">Story Facebook 24h</span>, video nhóm riêng tư, hoặc giải quyết <span class="text-red-400 font-semibold">YouTube Cloud 429</span>. Hệ thống tự động nhận diện và gộp cookie của nhiều nền tảng (YouTube, FB, TikTok, Instagram...) vào chung!
                     </p>
-                    <textarea id="settingCookieInput" rows="2" placeholder="Dán cookie c_user=...; xs=... hoặc toàn bộ file cookies.txt tại đây..." class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white font-mono text-[11px] focus:outline-none focus:border-blue-500"></textarea>
+                    <textarea id="settingCookieInput" rows="2" placeholder="Dán cookie (c_user=...; xs=...) hoặc file Netscape cookies.txt (YouTube, FB, TikTok, X)..." class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white font-mono text-[11px] focus:outline-none focus:border-blue-500"></textarea>
                     
                     <div class="flex items-center justify-between pt-1">
                         <span id="cookieInfoText" class="text-[10px] text-slate-500">Chưa có phiên lưu</span>
                         <div class="flex items-center space-x-2">
                             <button type="button" onclick="clearCookies()" id="btnClearCookie" class="hidden px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-[11px] font-semibold transition">
-                                <i class="fa-solid fa-trash-can mr-1"></i>Xóa
+                                <i class="fa-solid fa-trash-can mr-1"></i>Xóa Hết
                             </button>
                             <button type="button" onclick="saveCookies()" class="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold transition shadow-sm">
-                                <i class="fa-solid fa-key mr-1"></i>Lưu Cookie
+                                <i class="fa-solid fa-key mr-1"></i>Lưu & Gộp Cookie
                             </button>
                         </div>
                     </div>
@@ -583,11 +588,17 @@
                     <details class="text-[10px] text-slate-400 bg-slate-950/60 rounded-lg p-2 border border-slate-800">
                         <summary class="cursor-pointer font-semibold text-slate-300 hover:text-white flex items-center space-x-1">
                             <i class="fa-solid fa-circle-question text-blue-400"></i>
-                            <span>Cách lấy Cookie Facebook trong 10 giây (Siêu dễ)</span>
+                            <span>Hướng dẫn lấy Cookie cho mọi MXH (Chỉ 10 giây)</span>
                         </summary>
-                        <div class="mt-2 space-y-1.5 pl-2 text-slate-300 border-l border-slate-700">
-                            <div><strong class="text-blue-300">Cách 1 (Nhanh nhất):</strong> Vào <span class="text-white font-mono">facebook.com</span> trên máy tính -> Bấm phím <kbd class="px-1 py-0.5 bg-slate-800 rounded text-amber-300 font-mono">F12</kbd> -> Chọn tab <strong>Console</strong> -> Gõ <code class="text-emerald-400 font-mono">document.cookie</code> rồi Enter -> Copy toàn bộ chuỗi kết quả và dán vào ô trên!</div>
-                            <div><strong class="text-blue-300">Cách 2 (Tiện ích):</strong> Dùng tiện ích Chrome <em>"Get cookies.txt LOCALLY"</em> -> Bấm Export -> Copy dán vào ô trên.</div>
+                        <div class="mt-2 space-y-2 pl-2 text-slate-300 border-l border-slate-700">
+                            <div>
+                                <strong class="text-emerald-400">Cách chuẩn nhất (Cho YouTube + Toàn bộ MXH):</strong><br>
+                                Cài tiện ích Chrome/Edge: <em>"Get cookies.txt LOCALLY"</em> -> Mở tab (YouTube/FB/TikTok) đã đăng nhập -> Bấm icon tiện ích -> Bấm <strong>Export</strong> (hoặc Copy) -> Dán vào ô trên -> Bấm <strong>Lưu & Gộp Cookie</strong>. Bạn có thể làm lần lượt cho từng trang, hệ thống sẽ tự động giữ và gộp tất cả lại!
+                            </div>
+                            <div>
+                                <strong class="text-blue-300">Cách nhanh riêng cho Facebook (F12):</strong><br>
+                                Vào <span class="text-white font-mono">facebook.com</span> -> Bấm <kbd class="px-1 py-0.5 bg-slate-800 rounded text-amber-300 font-mono">F12</kbd> -> Chọn tab <strong>Console</strong> -> Gõ <code class="text-emerald-400 font-mono">document.cookie</code> rồi Enter -> Copy toàn bộ dán vào đây!
+                            </div>
                         </div>
                     </details>
                 </div>
