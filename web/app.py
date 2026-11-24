@@ -994,6 +994,7 @@ async def api_tunnel_status():
     return {
         "is_cloud": is_cloud,
         "is_node_online": bool(effective_url),
+        "node_online": bool(effective_url),
         "tunnel_url": effective_url,
         "mode": "cloud" if is_cloud else "desktop"
     }

@@ -46,6 +46,11 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(() => {
         loadStats();
     }, 5000);
+
+    // Đồng bộ kiểm tra trạng thái Node máy tính mỗi 10s
+    setInterval(() => {
+        checkSmartModeStatus();
+    }, 10000);
 });
 
 // ==================== WEBSOCKET ====================

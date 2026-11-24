@@ -306,9 +306,10 @@ def download_with_ytdlp_engine(
                 progress_callback(99.5, "Hoàn tất xuất file...")
 
     # Cấu hình đa luồng tải mảnh video (HLS/DASH) siêu tốc
+    ffmpeg_bin = FFMPEG_EXE if sys.platform != "win32" else (BIN_DIR if os.path.exists(os.path.join(BIN_DIR, "ffmpeg.exe")) else "ffmpeg")
     ydl_opts = {
         "outtmpl": out_template,
-        "ffmpeg_location": BIN_DIR,
+        "ffmpeg_location": ffmpeg_bin,
         "progress_hooks": [ytdl_hook],
         "no_playlist": True,
         "quiet": True,
@@ -334,28 +335,9 @@ def download_with_ytdlp_engine(
         ydl_opts["buffersize"] = 16 * 1024 * 1024
         ydl_opts["http_chunk_size"] = 10485760
 
-    # Cấu hình giải mã YouTube chuyên biệt
-    if platform == "youtube":
-        has_cookies = os.path.exists(COOKIE_FILE) and os.path.getsize(COOKIE_FILE) > 10
-        if has_cookies:
-            ydl_opts["extractor_args"] = {
-                "youtube": {
-                    "player_client": ["web", "android", "ios"]
-                }
-            }
-        elif is_cloud_env:
-            ydl_opts["extractor_args"] = {
-                "youtube": {
-                    "player_client": ["android", "ios", "mweb"]
-                }
-            }
-        else:
-            # Trên máy tính (IP dân dụng Việt Nam): Mở toàn bộ luồng 4K/Full HD
-            ydl_opts["extractor_args"] = {
-                "youtube": {
-                    "player_client": ["web", "android", "ios"]
-                }
-            }
+    # Cấu hình giải mã YouTube chuyên biệt:
+    # Tuyệt đối không ép player_client cố định (như android/mweb) vì android yêu cầu PO-Token còn mweb bị thí nghiệm SABR.
+    # Để yt-dlp tự động dùng bộ client đa tầng tối tân ('tv_samsung', 'visionos', 'web') cùng Node.js giải mã JS challenge.
 
     # Tự động kích hoạt Deno & Node.js JS runtime để giải mã n-sig / bot challenge của YouTube
     import shutil
@@ -435,9 +417,12 @@ def download_with_ytdlp_engine(
                 ydl_opts["format"] = "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]/best"
         ydl_opts["merge_output_format"] = "mp4"
 
-    # Kiểm tra nếu có cookie file trong data/cookies.txt
-    if os.path.exists(COOKIE_FILE) and os.path.getsize(COOKIE_FILE) > 10:
-        ydl_opts["cookiefile"] = COOKIE_FILE
+    # Kiểm tra cookie: Chỉ nạp cookiefile cho các nền tảng cần phiên đăng nhập (Facebook Story, Instagram, TikTok private...)
+    # Tuyệt đối KHÔNG nạp cookie YouTube tĩnh mặc định vì Google xoay vòng token liên tục (__Secure-1PSIDTS),
+    # nếu gửi cookie cũ từ IP Cloud sẽ kích hoạt YouTube Bot Challenge (HTTP 429).
+    if platform != "youtube":
+        if os.path.exists(COOKIE_FILE) and os.path.getsize(COOKIE_FILE) > 10:
+            ydl_opts["cookiefile"] = COOKIE_FILE
 
     info = None
     try:
@@ -450,8 +435,11 @@ def download_with_ytdlp_engine(
         ydl_opts.pop("external_downloader_args", None)
 
         if platform == "youtube":
-            # Tầng dự phòng: Loại bỏ cookiefile (tránh lỗi SABR experiment) và để yt-dlp tự giải mã visionos/InnerTube
-            ydl_opts.pop("cookiefile", None)
+            # Nếu gặp lỗi yêu cầu đăng nhập (giới hạn độ tuổi / video riêng tư), thử lại với cookie
+            if os.path.exists(COOKIE_FILE) and os.path.getsize(COOKIE_FILE) > 10 and any(w in str(first_err).lower() for w in ("login", "sign in", "age", "confirm your age")):
+                ydl_opts["cookiefile"] = COOKIE_FILE
+            else:
+                ydl_opts.pop("cookiefile", None)
             ydl_opts.pop("extractor_args", None)
             if quality == "720p":
                 ydl_opts["format"] = "bestvideo[height<=720]+bestaudio/best[height<=720]/best"
@@ -878,19 +866,19 @@ def download_via_desktop_node(
     tải siêu tốc 10 MB/s không cần tài khoản, sau đó kéo file hoàn tất về Render.
     """
     print(f"[HybridNode] 🌐 Ủy thác tải video qua Node Máy Tính: {remote_url}")
-    if progress_callback:
-        progress_callback(10.0, "Kết nối Node Máy Tính...")
-
     session = get_session()
-    # Kiểm tra nhanh trạng thái Node máy tính trước khi giao việc
+    # Kiểm tra nhanh trạng thái Node máy tính trước khi giao việc (timeout 8s để Cloudflare Tunnel bắt tay)
     try:
-        chk = session.get(f"{remote_url}/api/version", timeout=4)
+        chk = session.get(f"{remote_url}/api/version", timeout=8)
         if chk.status_code != 200:
             raise Exception("Node phản hồi mã HTTP không hợp lệ")
     except Exception as e_chk:
         from core.tunnel import set_remote_tunnel_url
         set_remote_tunnel_url("")
         raise Exception(f"Node máy tính không trực tuyến ({e_chk})")
+
+    if progress_callback:
+        progress_callback(10.0, "⚡ Node Máy Tính đang xử lý...")
 
     resp = session.post(
         f"{remote_url}/api/tasks",
@@ -1094,10 +1082,7 @@ def download_video_smart(
             else:
                 raise Exception("Không thể tải Story Instagram. Cookie đã hết hạn hoặc Story ở chế độ bạn bè thân thiết.")
         elif platform == "youtube" and ("player response" in err_str.lower() or "429" in err_str.lower() or "bot" in err_str.lower()):
-            if not has_cookies:
-                raise Exception("YouTube chặn IP Cloud (HTTP 429). Hãy vào Cài đặt (⚙️) dán Cookie YouTube, hoặc chạy tool trên máy tính bằng file run_web.bat để tải siêu tốc không bị chặn!")
-            else:
-                raise Exception("Cookie YouTube hiện tại không hợp lệ hoặc đã hết hạn. Vui lòng cập nhật Cookie mới trong Cài đặt (⚙️)!")
+            raise Exception("YouTube tạm thời giới hạn IP Cloud. Bạn hãy mở file run_web.bat trên máy tính (dùng mạng nhà) để web tự động kết nối và tải siêu tốc Full HD/4K không bao giờ bị chặn!")
         elif "login" in err_str.lower() or "private" in err_str.lower():
             raise Exception("Video này ở chế độ riêng tư hoặc yêu cầu đăng nhập tài khoản (vào Cài đặt ⚙️ để thêm Cookie).")
         elif "unavailable" in err_str.lower() or "not found" in err_str.lower() or "404" in err_str:
